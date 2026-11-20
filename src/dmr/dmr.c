@@ -48,6 +48,7 @@
 #include "radio.h"
 #include "dmr.h"
 #include "p25_phy.h"
+#include "aprs_dmr.h"
 
 #define VECTOR_FIRST       32
 #define IRQ_SYSTEM         (61 - VECTOR_FIRST)
@@ -232,6 +233,13 @@ bool dmr_has_sync(void)
     return HRC7000HasGotSync();
 }
 
+// The engine follows a call's timeslots (slotState): idle again some 0.7 s after it ends (measured). Not
+// HRC7000HasGotSync(): the timing found stays after the signal. A call of another colour code, filtered out, isn't seen
+bool dmr_channel_busy(void)
+{
+    return slotState != DMR_STATE_IDLE;
+}
+
 bool dmr_is_transmitting(void)
 {
     return trxTransmissionEnabled || trxIsTransmitting;
@@ -240,6 +248,40 @@ bool dmr_is_transmitting(void)
 bool dmr_repeater_failed(void)
 {
     return (HRC7000GetIsWakingState() == WAKING_MODE_FAILED);
+}
+
+bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
+                            uint32_t destination, uint32_t source)
+{
+    aprs_dmr_tx_t tx;
+    uint8_t types[DMR_DATA_BURSTS_MAX];
+    uint8_t lengths[DMR_DATA_BURSTS_MAX];
+    uint8_t payloads[DMR_DATA_BURSTS_MAX][12];
+
+    if (!aprs_dmr_build_position(latitude_e7, longitude_e7, speed_knots, course, destination, source, &tx)) {
+        return false;
+    }
+    for (uint8_t i = 0; i < tx.count; i++) {
+        types[i] = tx.burst[i].type;
+        lengths[i] = tx.burst[i].length;
+        memcpy(payloads[i], tx.burst[i].payload, tx.burst[i].length);
+    }
+    return HRC7000SendDataBursts(types, lengths, payloads, tx.count);
+}
+
+bool dmr_aprs_busy(void)
+{
+    return !HRC7000DataBurstsDone();
+}
+
+bool dmr_aprs_failed(void)
+{
+    return HRC7000DataBurstsFailed();
+}
+
+void dmr_aprs_cancel(void)
+{
+    HRC7000AbortDataBursts();
 }
 
 /* The call: the LC of the engine to the last heard list and the UI (lastHeardListUpdate()) */

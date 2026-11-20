@@ -53,6 +53,7 @@
 #include "tx_screen.h"
 #include "number_entry.h"
 #include "nxdn_id.h"
+#include "extra_options.h"
 
 #define DIGITS     CODEPLUG_CONTACT_ID_DIGITS
 #define LABEL_Y    44
@@ -67,13 +68,15 @@ enum {
     ENTRY_CONTACT,
     ENTRY_OWN_ID,
     ENTRIES,
-    ENTRY_DTMF = ENTRIES, // its own, # does not change it
+    ENTRY_DTMF = ENTRIES,    // its own, # does not change it
+    ENTRY_GATEWAY,           // the APRS-over-DMR gateway, its own too
 };
 
 static struct {
     int type;
     bool own_only;
-    bool nxdn; // the own NXDN ID (own_only too)
+    bool nxdn;    // the own NXDN ID (own_only too)
+    bool gateway; // the APRS-over-DMR gateway (own_only too)
     char digits[CODEPLUG_DTMF_CODE_LENGTH + 1]; // DIGITS of a number, or the DTMF code
     int length;
     int contact; // position in all the contacts (codeplug_contact_at())
@@ -101,10 +104,14 @@ static void enter(void *arg)
     }
     memset(&entry, 0, sizeof(entry));
     entry.nxdn = (arg == NUMBER_ENTRY_NXDN_ID);
-    entry.own_only = (arg == NUMBER_ENTRY_OWN_ID) || entry.nxdn;
-    entry.type = entry.own_only ? ENTRY_OWN_ID : ((arg == NUMBER_ENTRY_DTMF) ? ENTRY_DTMF : ENTRY_TG);
+    entry.gateway = (arg == NUMBER_ENTRY_APRS_GATEWAY);
+    entry.own_only = (arg == NUMBER_ENTRY_OWN_ID) || entry.nxdn || entry.gateway;
+    entry.type = entry.gateway ? ENTRY_GATEWAY
+                              : (entry.own_only ? ENTRY_OWN_ID : ((arg == NUMBER_ENTRY_DTMF) ? ENTRY_DTMF : ENTRY_TG));
     if (entry.nxdn) {
         set_digits(nxdn_id_stored());
+    } else if (entry.gateway) {
+        set_digits(extra_options_aprs_dmr_gateway());
     } else if (entry.own_only) {
         set_digits(codeplug_get_dmr_id());
     }
@@ -147,6 +154,16 @@ static void take(void)
         }
         ui_key_beep(SOUND_ACK);
         nxdn_id_set((uint16_t)value);
+        ui_pop();
+        return;
+    }
+    if (entry.gateway) {
+        if ((value == 0) || (value > 0xFFFFFFu)) { // a 24 bit DMR ID
+            ui_key_beep(SOUND_ERROR);
+            return;
+        }
+        ui_key_beep(SOUND_ACK);
+        extra_options_set_aprs_dmr_gateway(value);
         ui_pop();
         return;
     }
@@ -339,8 +356,10 @@ static void draw(void)
         bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_BACK));
         return;
     }
-    draw_text(x, LABEL_Y, text(entry.nxdn ? TEXT_NXDN_ID : labels[entry.type]), &font_roboto17_bold, FONT_ALIGN_LEFT,
-              THEME_COLOUR_TEXT);
+    text_id_t label = entry.nxdn ? TEXT_NXDN_ID
+                                 : ((entry.type == ENTRY_GATEWAY) ? TEXT_APRS_GATEWAY : labels[entry.type]);
+
+    draw_text(x, LABEL_Y, text(label), &font_roboto17_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
     if (!entry.own_only) {
         draw_text(FB_WIDTH - WIDGET_MARGIN, LABEL_Y, text(TEXT_UI_HASH_TYPE), &font_roboto17, FONT_ALIGN_RIGHT,
                   THEME_COLOUR_TEXT_LABEL);
@@ -349,9 +368,10 @@ static void draw(void)
     shown.count = (uint8_t)entry.length;
     digit_entry_draw(&shown, x, DIGITS_Y);
 
-    if (entry.type == ENTRY_OWN_ID) {
+    if ((entry.type == ENTRY_OWN_ID) || (entry.type == ENTRY_GATEWAY)) {
         snprintf(buffer, sizeof(buffer), "%s: %lu", text(TEXT_UI_NOW),
-                 (unsigned long)(entry.nxdn ? nxdn_id_get() : codeplug_get_dmr_id()));
+                 (unsigned long)(entry.gateway ? extra_options_aprs_dmr_gateway()
+                                               : (entry.nxdn ? nxdn_id_get() : codeplug_get_dmr_id())));
         draw_text(x, HINT_Y, buffer, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
         draw_hline(x, LINE_Y, FB_WIDTH - (2 * WIDGET_MARGIN), THEME_COLOUR_LINE);
         draw_text(x, LINE_Y + 10, text(TEXT_UI_OK_SAVE_ID), &font_roboto17, FONT_ALIGN_LEFT,

@@ -75,7 +75,7 @@ static bool beacon_done;
 /* The machine's questions */
 
 // May this kind of transmission start? The checks on the channel tuned (receive only, mode, band), then its backend's
-static bool fsm_tx_allowed(rfsm_tx_kind_t kind, uint16_t id)
+static bool fsm_can_transmit(rfsm_tx_kind_t kind, uint16_t id)
 {
     (void)id;
     if (tx_check(&rs.channel, rs.has_channel) != RADIO_TX_OK) {
@@ -84,15 +84,28 @@ static bool fsm_tx_allowed(rfsm_tx_kind_t kind, uint16_t id)
     return (rs.tx[kind] != NULL) && rs.tx[kind]->can_start();
 }
 
-static bool fsm_dmr_channel(void)
+static bool fsm_on_dmr_channel(void)
 {
-    return rs.dmr_on;
+    return rs.dmr_running;
 }
 
-// Someone on the channel: the beacon waits for it to be free
-static bool fsm_carrier(void)
+// Someone on the channel: a beacon or a burst waits for it to be free. On the beacon's own frequency the noise only
+// (radio_aprs.c); on a DMR channel a call heard or followed by the engine; else the squelch
+static bool fsm_channel_busy(void)
 {
-    return rs.carrier || rs.speaker;
+    if (aprs_tuned_away()) {
+        return aprs_channel_busy();
+    }
+    if (rs.dmr_running) {
+        return rs.audio_needs_amp || dmr_channel_busy();
+    }
+    return rs.has_carrier || rs.speaker_open;
+}
+
+// How long a beacon or a burst waits for a free channel
+static uint32_t fsm_listen_ms(rfsm_tx_kind_t kind)
+{
+    return (kind == RFSM_TX_KIND_DATA) ? data_listen_ms() : aprs_listen_ms();
 }
 
 /* The machine's actions */
@@ -127,10 +140,38 @@ static void fsm_beacon_send(uint16_t id)
     beacon_done = true;
 }
 
-// The result of a beacon request (sent, busy, refused, ...) for radio_aprs_sent()
+// The beacon's own frequency tuned while it listens, and back after
+static void fsm_beacon_tune(uint16_t id)
+{
+    (void)id;
+    aprs_tune();
+}
+
+static void fsm_restore(void)
+{
+    aprs_restore();
+}
+
+// The data burst handed to the engine (the transmit entry done); its end or fault seen in fsm_pass()
+static void fsm_data_send(uint16_t id)
+{
+    (void)id;
+    data_start();
+}
+
+static void fsm_data_clear(void)
+{
+    data_cancel();
+}
+
+// The result of a request (sent, busy, refused, ...) for radio_result(); the id tells whose
 static void fsm_notify(uint16_t id, rfsm_result_t result)
 {
-    aprs_finished(id, result == RFSM_SENT);
+    if (id & RADIO_ID_DATA) {
+        data_finished(id, radio_result_of(result));
+    } else {
+        aprs_finished(id, radio_result_of(result));
+    }
 }
 
 // The PTT refused: nothing to do, the transmit screen shows why (radio_tx_check())
@@ -138,29 +179,20 @@ static void fsm_ptt_refused(void)
 {
 }
 
-// Not done yet: the beacon on its own frequency and back (step 4, #35), data bursts (step 5)
-static void not_yet_id(uint16_t id)
-{
-    (void)id;
-}
-
-static void not_yet(void)
-{
-}
-
 /* The work of each tick (25 ms), by state: the machine calls receive_work() in RX, SCAN and BEACON_LISTEN,
    transmit_work() in TX_VOICE, TX_ENDING and DATA_SEND (none in BEACON_SEND: the frame goes out in one call) */
 
 // The signal: the squelch in FM / AM / SSB (not while transmitting), the S meter in DMR / P25 / NXDN; nothing while
-// the power saving has the receiver off
+// the power saving has the receiver off, nor on the beacon's own frequency (its busy check reads the noise only: the
+// squelch would open the speaker there)
 static void read_signal(void)
 {
-    if (eco_rx_off()) {
+    if (eco_rx_off() || aprs_tuned_away()) {
         return;
     }
-    if (is_analog() && !rs.transmitting) {
+    if (is_analog() && !rs.is_transmitting) {
         squelch_check();
-    } else if (rs.dmr_on) {
+    } else if (rs.dmr_running) {
         dmr_signal();
     }
 }
@@ -184,10 +216,11 @@ static void transmit_work(void)
 
 static const rfsm_ops_t FSM_OPS = {
     // questions
-    .tx_allowed = fsm_tx_allowed,
-    .dmr_channel = fsm_dmr_channel,
-    .carrier = fsm_carrier,
+    .can_transmit = fsm_can_transmit,
+    .on_dmr_channel = fsm_on_dmr_channel,
+    .channel_busy = fsm_channel_busy,
     .now_ms = systime_get_ms,
+    .listen_ms = fsm_listen_ms,
     // a transmission
     .tx_begin = fsm_tx_begin,
     .tx_ending = fsm_tx_ending,
@@ -196,12 +229,12 @@ static const rfsm_ops_t FSM_OPS = {
     // the channel
     .apply_channel = fsm_apply_channel,
     // the beacon
-    .beacon_tune = not_yet_id,
+    .beacon_tune = fsm_beacon_tune,
     .beacon_send = fsm_beacon_send,
-    .restore = not_yet,
+    .restore = fsm_restore,
     // data bursts
-    .data_send = not_yet_id,
-    .data_clear = not_yet,
+    .data_send = fsm_data_send,
+    .data_clear = fsm_data_clear,
     // each tick
     .rx_work = receive_work,
     .scan_work = receive_work,
@@ -212,10 +245,10 @@ static const rfsm_ops_t FSM_OPS = {
 };
 
 /* One pass of the machine, in three parts, in this order:
-   1. what was asked: the scan's level, a beacon request, the PTT's level;
-   2. the tick: the state's work (receive_work() / transmit_work(), the beacon listening for a free channel, the data
-      timeout);
-   3. what came of it: a transmission over.
+   1. what was asked: the scan's level, a beacon request, a data burst, the PTT's level;
+   2. the tick: the state's work (receive_work() / transmit_work(), a beacon or burst listening for a free channel,
+      the data timeout);
+   3. what came of it: a transmission over, a data burst ended or failed.
    The PTT before the tick: a PTT pressed while the beacon listens wins, the beacon is given up before the tick could
    start sending it. The results after the tick: the tick sends the beacon frame, the same pass ends it. */
 static void fsm_pass(void)
@@ -223,22 +256,32 @@ static void fsm_pass(void)
     uint16_t id;
 
     // 1. what was asked
-    rfsm_scan(&fsm, rs.scanning);
+    rfsm_scan(&fsm, rs.is_scanning);
     if (aprs_take_request(&id)) {
         rfsm_event(&fsm, RFSM_BEACON_REQ, id);
     }
-    rfsm_ptt(&fsm, rs.tx_wanted);
+    if (data_take_request(&id)) {
+        rfsm_event(&fsm, RFSM_DATA_REQ, id);
+    }
+    rfsm_ptt(&fsm, rs.ptt_down);
 
     // 2. the tick
     rfsm_event(&fsm, RFSM_TICK, 0);
 
-    // 3. a transmission over: the beacon frame sent, or the PTT's backend done sending its last frames
+    // 3. a transmission over: the beacon frame sent, the PTT's backend done sending its last frames, the burst's end
     if (beacon_done) {
         beacon_done = false;
         rfsm_event(&fsm, RFSM_TX_DONE, 0);
     }
     if ((fsm.state == RFSM_TX_ENDING) && !tx_on->sending()) {
         rfsm_event(&fsm, RFSM_TX_DONE, 0);
+    }
+    if (fsm.state == RFSM_DATA_SEND) {
+        if (data_failed()) {
+            rfsm_event(&fsm, RFSM_FAULT, 0);
+        } else if (data_ended()) {
+            rfsm_event(&fsm, RFSM_DATA_DONE, fsm.current);
+        }
     }
 }
 
@@ -259,7 +302,7 @@ static void RAM_CODE radio_task(void *arg)
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(scan_sampling() ? SCAN_SAMPLE_MS : SAMPLE_MS));
 
         // 1. a new channel
-        if (rs.channel_pending) {
+        if (rs.has_new_channel) {
             rfsm_event(&fsm, RFSM_CHANNEL, 0);
         }
 
@@ -290,6 +333,7 @@ void radio_init(void)
 {
     rs.tx[RFSM_TX_KIND_VOICE] = tx_backend_of(NULL, false);
     rs.tx[RFSM_TX_KIND_BEACON] = tx_backend_beacon();
+    rs.tx[RFSM_TX_KIND_DATA] = tx_backend_data();
     gpio_output(PIN_AUDIO_SW, false);
     gpio_output(PIN_AUDIO_AMP, false);
     gpio_output(PIN_PA_VHF, false);
@@ -318,15 +362,16 @@ void radio_set_channel(const codeplug_channel_t *new_channel)
     bool valid = (new_channel != NULL);
 
     taskENTER_CRITICAL();
-    if ((valid != rs.requested_valid) || (valid && (memcmp(&rs.requested, new_channel, sizeof(rs.requested)) != 0))) {
+    if ((valid != rs.has_requested) || (valid && (memcmp(&rs.requested, new_channel, sizeof(rs.requested)) != 0))) {
         if (valid) {
             memcpy(&rs.requested, new_channel, sizeof(rs.requested));
         }
-        rs.requested_valid = valid;
-        rs.channel_pending = true;
+        rs.has_requested = valid;
+        rs.channel_gen++;
+        rs.has_new_channel = true;
     }
     taskEXIT_CRITICAL();
-    if (rs.channel_pending) {
+    if (rs.has_new_channel) {
         radio_wake();
     }
 }
@@ -335,17 +380,37 @@ void radio_set_channel(const codeplug_channel_t *new_channel)
 void radio_transmit(bool on)
 {
     if (on) {
-        rs.tx_plain = false;
+        rs.tx_without_tones = false;
     }
-    rs.tx_wanted = on;
+    rs.ptt_down = on;
     radio_wake();
 }
 
 void radio_transmit_plain(void)
 {
-    rs.tx_plain = true;
-    rs.tx_wanted = true;
+    rs.tx_without_tones = true;
+    rs.ptt_down = true;
     radio_wake();
+}
+
+// The machine's result as the API's
+radio_result_t radio_result_of(rfsm_result_t result)
+{
+    switch (result) {
+        case RFSM_SENT: return RADIO_SENT;
+        case RFSM_BUSY: return RADIO_BUSY;
+        case RFSM_ABANDONED: return RADIO_ABANDONED;
+        case RFSM_FAILED: return RADIO_FAILED;
+        default: return RADIO_REFUSED; // refused, scanning, the queue full
+    }
+}
+
+radio_result_t radio_result(radio_request_t request)
+{
+    if (request == 0) {
+        return RADIO_REFUSED;
+    }
+    return (request & RADIO_ID_DATA) ? data_result(request) : aprs_result(request);
 }
 
 // The state machine's state (radio_fsm.h): shown by the test interface
@@ -356,17 +421,12 @@ const char *radio_state_name(void)
 
 bool radio_is_transmitting(void)
 {
-    return rs.transmitting;
-}
-
-uint32_t radio_tx_frequency(void)
-{
-    return rs.requested.tx_freq;
+    return rs.is_transmitting;
 }
 
 uint32_t radio_rx_frequency(void)
 {
-    return rs.requested_valid ? rs.requested.rx_freq : 0;
+    return rs.has_requested ? rs.requested.rx_freq : 0;
 }
 
 bool radio_get_channel(codeplug_channel_t *out)
@@ -374,7 +434,7 @@ bool radio_get_channel(codeplug_channel_t *out)
     bool valid;
 
     taskENTER_CRITICAL();
-    valid = rs.requested_valid;
+    valid = rs.has_requested;
     if (valid) {
         memcpy(out, &rs.requested, sizeof(*out));
     }
@@ -384,5 +444,5 @@ bool radio_get_channel(codeplug_channel_t *out)
 
 bool radio_channel_is_dmr(void)
 {
-    return rs.requested_valid && (rs.requested.mode == CODEPLUG_MODE_DMR);
+    return rs.has_requested && (rs.requested.mode == CODEPLUG_MODE_DMR);
 }

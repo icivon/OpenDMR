@@ -32,12 +32,14 @@
 #include "ui.h"
 
 // The TG / PC / contact / own DMR ID entry (uiTxTgPcContactOwnId.c, # on the channel and VFO screens): # changes
-// what is entered, the digits type it, UP / DOWN step it by one, LEFT deletes, the left key takes it.
+// what is entered, the digits type it, UP / DOWN step it by one, LEFT deletes, the left key takes it. The own NXDN
+// ID and the APRS-over-DMR gateway use it too, each with its own screen.
 extern const ui_screen_t number_entry_screen; // arg: one of these
 
 #define NUMBER_ENTRY_TX_TARGET ((void *)1) // the TG / PC to transmit to (or the own ID)
 #define NUMBER_ENTRY_OWN_ID    ((void *)2) // the own ID only
 #define NUMBER_ENTRY_DTMF      ((void *)3) // FM: a DTMF code (the digits, * and #), sent with the left key
 #define NUMBER_ENTRY_NXDN_ID   ((void *)4) // the own NXDN ID only (1 - 65535; 0: not set, the DMR ID's)
+#define NUMBER_ENTRY_APRS_GATEWAY ((void *)5) // the APRS-over-DMR gateway (24 bit DMR ID only)
 
 #endif

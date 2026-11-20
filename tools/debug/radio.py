@@ -13,7 +13,7 @@ and the state as text, so a test needs no screenshots and no ELF symbols (any fi
     r.tune(144.1)                  # VFO: the receive frequency typed in, checked
     r.wait(lambda s: s['scan'] == 'on', 3)
 
-    py tools/debug/radio.py COM22 [state | key star | long star | ptt on | ptt off | home]
+    py tools/debug/radio.py COM22 [state | key star | long star | ptt on | ptt off | gateway 222999 | via 2 | home]
 """
 import struct
 import sys
@@ -63,6 +63,33 @@ class Radio:
 
     def ptt(self, on):
         self.event('ptt', PRESS if on else RELEASE)
+
+    def set_aprs_gateway(self, dmr_id):
+        """Store the APRS-over-DMR gateway (24 bit DMR ID) in the firmware's own flash block, without the CPS"""
+        if not 0 < dmr_id <= 0xFFFFFF:
+            raise ValueError('DMR ID must be in 1..0xFFFFFF')
+        self._request(b'Dg' + bytes([(dmr_id >> 16) & 0xFF, (dmr_id >> 8) & 0xFF, dmr_id & 0xFF]), b'Dg')
+        self.port.read(1)
+        return dmr_id
+
+    def set_aprs_via(self, via):
+        """Choose where APRS positions are sent: 0 AFSK, 1 DMR, 2 both"""
+        if via not in (0, 1, 2):
+            raise ValueError('via must be 0 (AFSK), 1 (DMR) or 2 (both)')
+        self._request(b'Dw' + bytes([via]), b'Dw')
+        self.port.read(1)
+        return via
+
+    def beacon(self, frequency=0):
+        """A test APRS beacon (400 bits of flags) through the radio task, on the channel (0) or on frequency (10 Hz
+        units); True: accepted"""
+        self._request(b'Da' + frequency.to_bytes(4, 'big'), b'Da')
+        return self.port.read(1) == b'\x01'
+
+    def data(self, ms, fail=False):
+        """A test data burst through the radio task (no DMR engine, no RF): sent for ms, or failing; True: accepted"""
+        self._request(b'Dd' + bytes([(ms >> 8) & 0xFF, ms & 0xFF, 1 if fail else 0]), b'Dd')
+        return self.port.read(1) == b'\x01'
 
     # ---- the state
 
@@ -145,6 +172,10 @@ def main():
         r.key(args[1], long=(args[0] == 'long'))
     elif args[0] == 'ptt':
         r.ptt(args[1] == 'on')
+    elif args[0] == 'gateway':
+        print('aprs_gateway=%d' % r.set_aprs_gateway(int(args[1], 0)))
+    elif args[0] == 'via':
+        print('aprs_via=%d' % r.set_aprs_via(int(args[1], 0)))
     elif args[0] == 'home':
         print(r.home())
 

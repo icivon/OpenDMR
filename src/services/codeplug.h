@@ -278,8 +278,7 @@ typedef struct {
     uint8_t icon_index; // the symbol - '!'
     char comment[24];
     uint8_t beacon_freq[4]; // the frequency the beacon is sent on (OpenGD77's "Transmit frequency", the CPS's "Frec
-                            // TX"): 10 Hz units, little endian, 0: the channel's; not used yet (the beacon goes out
-                            // on the channel's frequency)
+                            // TX"): 10 Hz units, little endian, 0: the channel's (an FM channel); not used in PTT mode
     uint8_t reserved[2];
     uint8_t flags;      // bit 0: 300 baud, bit 1: the fixed position above, bit 2: transmit QSY, bit 3: monitor (the
                         // speaker on during the beacon, not used), 7:4 the position ambiguity (as the CPS has them)

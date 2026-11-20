@@ -36,12 +36,28 @@
 #define EXTRA_OPTION_HIDE_CALLER_PLACE (1UL << 0) // the DMR caller panel without the city and state (qso_panel.c)
 // bit 1: the receive log (rx_log.h, a test firmware: 0.4.1-debug): set on radios that ran it, so not reused
 #define EXTRA_OPTION_HIDE_RECENT_CALLERS (1UL << 2) // the channel screen's last two callers (off: shown)
+#define EXTRA_OPTION_AUTO_TIMEZONE       (1UL << 3)
+
+// APRS "Send via": bits 1..2 of the same block, a 2 bit value (0: AFSK, 1: DMR, 2: both)
+#define APRS_VIA_AFSK 0u
+#define APRS_VIA_DMR  1u
+#define APRS_VIA_BOTH 2u
+#define APRS_VIA_MASK (3UL << 1)
+
+// Destination for APRS positions sent over DMR (LRRP to the APRS gateway). Stored in our own flash block, not in
+// settings_t, so the OpenGD77 CPS layout stays untouched. 222999 (the Italian gateway) is the default; the APRS
+// options menu, the Dg cable command and tools/debug/radio.py change it (BrandMeister's common gateway is 5057).
+#define APRS_DMR_GATEWAY_DEFAULT 222999u // 0x036717
 
 void extra_options_load(void); // after flash_init()
 bool extra_option(uint32_t bit);
 void extra_option_set(uint32_t bit, bool on); // saved at once
 uint8_t extra_options_theme(void);          // the theme chosen (display.c); 0xFF: none yet
 void extra_options_set_theme(uint8_t theme); // saved at once
+uint8_t extra_options_aprs_via(void);                     // APRS_VIA_AFSK / DMR / BOTH
+void extra_options_set_aprs_via(uint8_t via);             // saved at once
+uint32_t extra_options_aprs_dmr_gateway(void);            // 24 bit DMR ID, default when unset
+void extra_options_set_aprs_dmr_gateway(uint32_t id);     // saved at once
 void extra_options_keep_block(uint32_t sector_address, uint8_t *sector); // a CPS sector write keeps the block
 
 #endif

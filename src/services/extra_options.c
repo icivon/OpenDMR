@@ -29,7 +29,8 @@
 /*
  * OpenDMR, service: our options (extra_options.h), in a block of ours in the settings' sector, after the PIN block
  * (security.c, 0x6100): not in the OpenGD77 settings, whose bits its CPS has its own meanings for, and not in its
- * custom data, which some codeplugs have no header for. A CPS sector write keeps it. Blank: the defaults (all 0).
+ * custom data, which some codeplugs have no header for. A CPS sector write keeps it. Blank: the defaults (all 0,
+ * plus the APRS-over-DMR gateway ID). The last three bytes hold that 24 bit ID, big endian.
  */
 
 #include <string.h>
@@ -42,11 +43,17 @@
 typedef struct {
     uint32_t magic;
     uint32_t bits;
-    uint8_t theme; // 0xFF: none chosen (a block written before it)
-    uint8_t reserved[3];
+    uint8_t theme;           // 0xFF: none chosen (a block written before it)
+    uint8_t aprs_gateway[3]; // 24 bit DMR ID, big endian; 0 / 0xFFFFFF: use the default
 } block_t;
 
 static block_t block;
+
+static uint32_t gateway_decode(void)
+{
+    return ((uint32_t)block.aprs_gateway[0] << 16) | ((uint32_t)block.aprs_gateway[1] << 8) |
+           (uint32_t)block.aprs_gateway[2];
+}
 
 void extra_options_load(void)
 {
@@ -54,6 +61,9 @@ void extra_options_load(void)
         memset(&block, 0xFF, sizeof(block));
         block.magic = MAGIC;
         block.bits = 0;
+        block.aprs_gateway[0] = (uint8_t)(APRS_DMR_GATEWAY_DEFAULT >> 16);
+        block.aprs_gateway[1] = (uint8_t)(APRS_DMR_GATEWAY_DEFAULT >> 8);
+        block.aprs_gateway[2] = (uint8_t)APRS_DMR_GATEWAY_DEFAULT;
     }
 }
 
@@ -72,6 +82,27 @@ void extra_option_set(uint32_t bit, bool on)
     }
 }
 
+uint8_t extra_options_aprs_via(void)
+{
+    uint8_t via = (uint8_t)((block.bits & APRS_VIA_MASK) >> 1);
+
+    return (via <= APRS_VIA_BOTH) ? via : APRS_VIA_AFSK;
+}
+
+void extra_options_set_aprs_via(uint8_t via)
+{
+    uint32_t bits;
+
+    if (via > APRS_VIA_BOTH) {
+        via = APRS_VIA_AFSK;
+    }
+    bits = (block.bits & ~APRS_VIA_MASK) | ((uint32_t)via << 1);
+    if (bits != block.bits) {
+        block.bits = bits;
+        (void)flash_write(ADDRESS, (const uint8_t *)&block, sizeof(block));
+    }
+}
+
 uint8_t extra_options_theme(void)
 {
     return block.theme;
@@ -81,6 +112,29 @@ void extra_options_set_theme(uint8_t theme)
 {
     if (theme != block.theme) {
         block.theme = theme;
+        (void)flash_write(ADDRESS, (const uint8_t *)&block, sizeof(block));
+    }
+}
+
+uint32_t extra_options_aprs_dmr_gateway(void)
+{
+    uint32_t id = gateway_decode();
+
+    return ((id == 0) || (id == 0xFFFFFFu)) ? APRS_DMR_GATEWAY_DEFAULT : id;
+}
+
+void extra_options_set_aprs_dmr_gateway(uint32_t id)
+{
+    uint8_t gateway[3];
+
+    if ((id == 0) || (id > 0xFFFFFFu)) {
+        id = APRS_DMR_GATEWAY_DEFAULT;
+    }
+    gateway[0] = (uint8_t)(id >> 16);
+    gateway[1] = (uint8_t)(id >> 8);
+    gateway[2] = (uint8_t)id;
+    if (memcmp(gateway, block.aprs_gateway, sizeof(gateway)) != 0) {
+        memcpy(block.aprs_gateway, gateway, sizeof(gateway));
         (void)flash_write(ADDRESS, (const uint8_t *)&block, sizeof(block));
     }
 }
