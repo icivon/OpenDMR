@@ -307,7 +307,7 @@ Tensión de batería, hora, fecha, localizador Maidenhead (Grid locator), gráfi
 <img src="manual/en/satellite.png" alt="Satélites de radioaficionado">
 
 Requiere **hora exacta y tu ubicación geográfica** (ingresadas en Info radio o por GPS) junto con los **elementos orbitales keplerianos (keps)** cargados previamente mediante el CPS.  
-Calcula y predice los pases orbitales de satélites de radioaficionados: diagrama de trayectoria polar, acimut, elevación y cálculo de corrección por efecto Doppler en tiempo real. La pantalla de pase sintoniza automáticamente las frecuencias corregidas y el PTT transmite con la compensación de Doppler al instante.
+Calcula y predice los pases orbitales de satélites de radioaficionados: diagrama de trayectoria polar, acimut, elevación y cálculo de corrección por efecto Doppler en tiempo real. La pantalla de pase sintoniza automáticamente las frecuencias corregidas y el PTT transmite con la compensación de Doppler al instante. En las frecuencias **APRS**, el PTT envía una baliza APRS a través del digirrepetidor del satélite en lugar de voz (como OpenGD77): usa la configuración APRS **con el mismo nombre que el satélite** (una llamada ISS con la ruta RS0ISS, SONATE-2 con DP0SNX...), creada en la página APRS del CPS, y la posición de las opciones APRS (GPS o fija). Sin una configuración con ese nombre, o sin posición: tono de error.
 
 ### GPS
 
@@ -363,13 +363,17 @@ Brillo diurno, brillo nocturno, brillo mínimo en reposo, modo de iluminación, 
 
 | Tema | Características |
 |---|---|
-| Auto (por defecto) | Aplica automáticamente Sunlight de 7:00 a 19:00 hora local y Deep sea de noche |
+| Auto (por defecto) | Tema claro del amanecer al atardecer y oscuro por la noche. Usa la posición GPS o la ubicación guardada. Sin ubicación, el horario diurno es de 07:00 a 19:00 en hora local. Sin un reloj válido, usa el tema oscuro. Noche auto usa el mismo horario nocturno para el brillo |
 | Deep sea | Modo oscuro: fondo azul marino oscuro con franja azul mar y selección en color cian |
 | Sunlight | Modo claro para exteriores: texto negro de alto contraste para visibilidad bajo luz solar directa |
 | Clear sky | Modo claro: fondo blanco con franja azul real y selección en naranja |
 | Graphite | Modo oscuro: grafito y naranja |
 | Night amber | Modo nocturno de bajo brillo: texto ámbar sobre negro para visión nocturna |
 | High contrast | Blanco y negro de máximo contraste con selección en amarillo |
+
+En las opciones de pantalla, activa Zona horaria auto y selecciona la hora local. La radio usa el GPS o la
+ubicación guardada para aplicar el horario de verano. La base incluida cubre 2026–2040. Si la ubicación no tiene
+coincidencia o la fecha queda fuera de ese intervalo, se usa la zona horaria manual.
 
 <img src="manual/themes.png" alt="Los seis temas visuales">
 
@@ -394,6 +398,11 @@ Menú informativo de solo lectura: muestra la tabla de calibración de fábrica 
 <img src="manual/en/aprs-options.png" alt="Opciones de APRS 1"> <img src="manual/en/aprs-options-2.png" alt="Opciones de APRS 2">
 
 Modo de baliza (Desactivado / Manual con SK1 + 3 / Tras cada transmisión con PTT / Automático por intervalo con decaimiento / SmartBeaconing inteligente según velocidad y ángulo de giro), fuente de coordenadas (fija del canal o GPS en vivo), compresión de datos y función **Transmitir QSY** (inserta en el comentario de la baliza tu frecuencia de voz, subtono y desplazamiento actual para que otros colegas sintonizados puedan llamarte directamente).
+
+- **Frecuencia de baliza** ("Beacon Tx frequency" de la configuración APRS, en el CPS): la baliza se envía en esa frecuencia en todos los modos salvo PTT (en PTT sale en el canal tras cada transmisión). Un canal solo emite balizas si tiene una configuración APRS asignada, y nunca si es de solo recepción. Sin frecuencia de baliza, un canal FM la envía en su propia frecuencia y un canal DMR, P25, NXDN, AM o USB no envía ninguna. El modo PTT solo emite balizas en canales FM. Durante la baliza la radio sintoniza FM en esa frecuencia y vuelve al canal: el canal elegido no cambia, y una llamada en curso aplaza la baliza a la siguiente ronda.
+- **Enviar por**: **AFSK** (por defecto, la baliza FM) / **DMR** / **Ambos**. DMR: en un canal DMR la posición se envía a una pasarela APRS como informe de datos LRRP, sin cambiar de frecuencia, en el timeslot y el código de color del canal; antes espera a que el canal esté libre (2 s como máximo), y un PTT pulsado durante el envío espera a que termine. La radio necesita su ID de DMR. Ambos: cada vía que el canal permita; en un canal DMR con frecuencia de baliza primero sale la baliza AFSK y luego el informe LRRP.
+- **Pasarela**: el ID de DMR de la pasarela que recibe los informes LRRP, 222999 por defecto (la pasarela APRS de BrandMeister); la tecla de menú abre la entrada numérica.
+- "Enviar por" y la pasarela se guardan en la radio, no en los ajustes del CPS. El envío por DMR aún es experimental: no se ha confirmado que la pasarela decodifique el informe.
 
 ---
 

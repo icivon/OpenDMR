@@ -208,6 +208,11 @@ void radio_phy_tx(bool on, bool low_power)
     }
 }
 
+bool radio_rf_on_air(void)
+{
+    return rf_on_air;
+}
+
 // The PA drive of the next DMR transmission
 void rf_set_drive(uint16_t drive)
 {

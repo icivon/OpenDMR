@@ -30,8 +30,10 @@
  * OpenDMR, service: APRS position beacons (aprs.h), from the main firmware's functions/aprs.c (OpenGD77,
  * VK3KYY / F1RMB): the AX.25 encoder (NRZI, bit stuffing, CRC), the position (plain or compressed, ambiguity, course
  * and speed), aprsBeaconingTick() (each second: the position, then the auto interval with its decay or the smart
- * beaconing), aprsBeaconingSendBeacon(). The frame goes to the radio task (radio_aprs_send()), which waits for a busy
- * channel and sends the AFSK. The settings are the APRS options' (settings.aprs_beaconing_settings_part1 / 2); the
+ * beaconing), aprsBeaconingSendBeacon(). The frame goes to the radio task (radio_aprs_send()), with the frequency the
+ * beacon is sent on when the configuration has one: the task tunes FM to it for the frame and goes back to the
+ * channel the user selected. An APRS-over-DMR report goes to the radio task too (radio_data_send()), only on a DMR
+ * channel. The settings are the APRS options' (settings.aprs_beaconing_settings_part1 / 2); the
  * keys and the PTT mode only ask (aprs_toggle(), aprs_send(), aprs_after_ptt()), the input task does the rest.
  */
 
@@ -45,8 +47,14 @@
 #include "gps.h"
 #include "sound.h"
 #include "ui.h"
+#include "dmr.h"
+#include "aprs_dmr.h"
+#include "p25_radio.h"
+#include "nxdn_radio.h"
+#include "hotspot.h"
 #include "tones.h"
 #include "aprs.h"
+#include "extra_options.h"
 
 #define DESTINATION        "APOG77"
 #define BUFFER_SIZE        256
@@ -59,6 +67,8 @@
 #define DECAY_RESET_M      15.0
 #define BEARING_INVALID    UINT16_MAX
 #define LOCATION_UNSET     0x7F000000UL // settings.location_lat never set
+#define APRS_NAME_LENGTH   8             // codeplug_aprs_config_t.name
+#define FLAG4_RX_ONLY      0x04          // codeplug.h: the channel receives only
 
 #define DEG_TO_RAD   0.017453292519943295
 #define RAD_TO_DEG   57.29577951308232
@@ -114,14 +124,20 @@ static struct {
     bool next_beacon_running;
     uint8_t decay;
     bool trigger;
-    bool waiting;       // a frame is with the radio task
+    bool waiting;       // an AFSK frame is with the radio task
+    radio_request_t request; // ... its request (radio_result())
     bool waiting_auto;  // ... sent by the auto modes (the trigger stays on a failure)
+    bool dmr_waiting;   // an LRRP report is with the radio task (the DMR engine)
+    radio_request_t dmr_request; // ... its request (radio_result())
+    bool dmr_ok;        // ... it went out
     location_t sending; // the location of that frame
 } aprs = {.fixed_lat = NAN, .fixed_lon = NAN, .decay = DECAY_MULT_MIN};
 
 static volatile bool toggle_asked = false;
 static volatile bool send_asked = false;
 static volatile bool ptt_asked = false;
+static volatile bool satellite_asked = false;    // aprs_send_satellite()
+static char satellite_asked_name[APRS_NAME_LENGTH + 1]; // ... its satellite
 
 /* AX.25 (enqueue...() of aprs.c) */
 
@@ -500,7 +516,7 @@ static uint16_t build_frame(const location_t *previous, const location_t *curren
         }
     }
 
-    put_flags(16);
+    put_flags(32); // ~213 ms of flags: 16 flags (107 ms) cut the beginning at some receivers (tested on the air)
     ax25.crc = 0xFFFF; // the CRC over the data only
     put_header(call);
     put_payload(lat_text, lon_text, has_course ? course_speed : NULL);
@@ -566,37 +582,152 @@ static bool position_valid(void)
     return !isnan(lat) && !isnan(lon);
 }
 
+// The frequency the beacon is sent on (OpenGD77's "Transmit frequency", the CPS's "Frec TX"), 10 Hz units; 0: not set.
+// Codeplugs not written by our CPS may leave 0xFFFFFFFF there: take it as 0, the channel's frequency.
+static uint32_t config_frequency(const codeplug_aprs_config_t *c)
+{
+    uint32_t frequency = (uint32_t)c->beacon_freq[0] | ((uint32_t)c->beacon_freq[1] << 8) |
+                         ((uint32_t)c->beacon_freq[2] << 16) | ((uint32_t)c->beacon_freq[3] << 24);
+
+    return (frequency == 0xFFFFFFFFu) ? 0 : frequency;
+}
+
+// A call being received on a DMR, P25 or NXDN channel: the beacon waits (going to FM for it would cut the call)
+static bool digital_call_active(void)
+{
+    codeplug_channel_t channel;
+    dmr_call_t call;
+    p25_call_t p25;
+    nxdn_call_t nxdn;
+
+    if (!radio_get_channel(&channel) || (channel.mode == CODEPLUG_MODE_FM)) {
+        return false;
+    }
+    if (radio_is_receiving()) {
+        return true;
+    }
+    if (channel.mode == CODEPLUG_MODE_DMR) {
+        return dmr_call(&call);
+    }
+    if (channel.mode == CODEPLUG_MODE_P25) {
+        return p25_radio_call(&p25) && p25.active;
+    }
+    if (channel.mode == CODEPLUG_MODE_NXDN) {
+        return nxdn_radio_call(&nxdn) && nxdn.active;
+    }
+    return false;
+}
+
+/* APRS over DMR: the LRRP report (aprs_dmr.c builds it, dmr.c hands it to the engine) as a data burst of the radio
+   task (radio_data_send()): it calls these in its task once the DMR channel is free */
+
+static struct {
+    int32_t latitude_e7;
+    int32_t longitude_e7;
+    uint16_t speed_knots;
+    uint16_t course;
+    uint32_t gateway;
+    uint32_t own_id;
+} dmr_report; // in use until its result isn't RADIO_PENDING
+
+static bool dmr_report_start(void)
+{
+    // A voice transmission may have left the engine in the failed wake state: reset it, or the report never starts
+    if (dmr_repeater_failed()) {
+        dmr_aprs_cancel();
+    }
+    return dmr_aprs_send_position(dmr_report.latitude_e7, dmr_report.longitude_e7, dmr_report.speed_knots,
+                                  dmr_report.course, dmr_report.gateway, dmr_report.own_id);
+}
+
+static bool dmr_report_failed(void)
+{
+    return dmr_aprs_failed() || dmr_repeater_failed();
+}
+
+static const radio_data_t DMR_REPORT = {dmr_report_start, dmr_aprs_busy, dmr_report_failed, dmr_aprs_cancel};
+
 // aprsBeaconingSendBeacon(): true when the frame went to the radio task. forced: SK1 + 3 (or the menu item): it sends
 // in any mode but OFF, not only in Manual / PTT, and the caller gives the error tone (once)
 static bool send_beacon(bool forced)
 {
     bool manual = forced || (aprs.s.mode == MODE_PTT) || (aprs.s.mode == MODE_MANUAL);
+    uint8_t via = extra_options_aprs_via();
+    bool want_afsk = (via != APRS_VIA_DMR);
+    bool want_dmr = (via != APRS_VIA_AFSK);
+    bool afsk_sent = false;
+    bool dmr_sent = false;
     codeplug_channel_t channel;
+    uint32_t frequency = 0;
+    bool afsk_possible;
+    uint16_t bits;
 
-    if (radio_is_scanning() || !radio_get_channel(&channel) || (channel.mode != CODEPLUG_MODE_FM) ||
-        (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting) {
+    if (radio_is_scanning() || !radio_get_channel(&channel) || radio_is_transmitting() || hotspot_active() ||
+        (aprs.s.mode == MODE_OFF) || !aprs.enabled || aprs.waiting || aprs.dmr_waiting) {
         return false;
     }
-    if (!forced && (aprs.s.mode == MODE_PTT) &&
-        ((aprs.next_beacon_running && ((int32_t)(systime_get_ms() - aprs.next_beacon_ms) < 0)) || !aprs.has_config)) {
+    // A receive-only channel never beacons, and a channel opts in by naming an APRS configuration.
+    if ((channel.flag4 & FLAG4_RX_ONLY) || !aprs.has_config) {
         return false;
     }
-    if (manual && !(aprs.has_config && position_valid())) {
+    if (!forced && (aprs.s.mode == MODE_PTT) && aprs.next_beacon_running &&
+        ((int32_t)(systime_get_ms() - aprs.next_beacon_ms) < 0)) {
+        return false; // not yet
+    }
+    if (manual && !position_valid()) {
         if (!forced) {
             sound_play(SOUND_ERROR); // "APRS?" / "Location?" of the main firmware
         }
         return false;
     }
-    if (!aprs.has_config) {
+    // A DMR or P25 call being received: not now, the beacon goes out on the next round (no call cut)
+    if (digital_call_active()) {
         return false;
     }
+    // PTT mode beacons go out on the channel after the transmission, so the configuration's frequency does not apply
+    // there (as OpenGD77). In the other modes the beacon goes out in FM on that frequency when the configuration has
+    // one, whatever the channel is: the radio task tunes to it for the frame and comes back, without touching the
+    // channel the user selected. On an FM channel without one it goes out on the channel's frequency; another mode
+    // needs the configuration's frequency.
+    if (aprs.s.mode != MODE_PTT) {
+        frequency = config_frequency(&aprs.config);
+        afsk_possible = (frequency != 0) || (channel.mode == CODEPLUG_MODE_FM);
+    } else {
+        afsk_possible = (channel.mode == CODEPLUG_MODE_FM);
+    }
 
-    uint16_t bits = build_frame(&aprs.previous, &aprs.current);
+    // AFSK: the frame where the rules above say (the beacon's frequency, or an FM channel). The LRRP report: on a
+    // DMR channel, no retune. "Both" uses each path the selected channel can take.
+    if (want_afsk && afsk_possible) {
+        bits = build_frame(&aprs.previous, &aprs.current);
+        aprs.request = radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, frequency);
+        afsk_sent = (aprs.request != 0);
+    }
 
-    if (!radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0)) {
+    if (want_dmr && (channel.mode == CODEPLUG_MODE_DMR)) {
+        uint32_t own_id = codeplug_get_dmr_id();
+        uint32_t gateway = extra_options_aprs_dmr_gateway();
+
+        if ((own_id != 0) && (gateway != 0)) {
+            dmr_report.latitude_e7 = (int32_t)llround(aprs.current.latitude * 1E7);
+            dmr_report.longitude_e7 = (int32_t)llround(aprs.current.longitude * 1E7);
+            dmr_report.speed_knots = (aprs.current.speed > SPEED_MIN_CKN) ? (uint16_t)(aprs.current.speed / 100u)
+                                                                          : APRS_DMR_SPEED_UNKNOWN;
+            dmr_report.course = (aprs.current.bearing != BEARING_INVALID) ? (uint16_t)(aprs.current.bearing / 100u)
+                                                                           : APRS_DMR_COURSE_UNKNOWN;
+            dmr_report.gateway = gateway;
+            dmr_report.own_id = own_id;
+            aprs.dmr_request = radio_data_send(&DMR_REPORT);
+            dmr_sent = (aprs.dmr_request != 0);
+        }
+    }
+
+    if (!afsk_sent && !dmr_sent) {
         return false;
     }
-    aprs.waiting = true;
+    aprs.waiting = afsk_sent;
+    aprs.dmr_waiting = dmr_sent;
+    aprs.dmr_ok = false; // until the radio task reports the outcome
     aprs.waiting_auto = !manual;
     aprs.sending = aprs.current;
     if (aprs.s.mode == MODE_PTT) {
@@ -607,6 +738,115 @@ static bool send_beacon(bool forced)
         aprs.previous = aprs.current;
     }
     return true;
+}
+
+/* The satellite screen (#55), as OpenGD77: a beacon through the satellite's digipeater, with the APRS configuration
+   named as the satellite (its path: RS0ISS for the ISS, DP0SNX for SONATE-2 ...), on the channel the screen tuned (the
+   satellite's APRS uplink, Doppler corrected) */
+
+// A configuration's name (8 characters, 0 or 0xFF after the last) is name: case blind, trailing spaces left out
+static bool named(const char config_name[APRS_NAME_LENGTH], const char *name)
+{
+    int a_len = 0;
+    int b_len = (int)strlen(name);
+
+    while ((a_len < APRS_NAME_LENGTH) && (config_name[a_len] != 0) && ((uint8_t)config_name[a_len] != 0xFF)) {
+        a_len++;
+    }
+    while ((a_len > 0) && (config_name[a_len - 1] == ' ')) {
+        a_len--;
+    }
+    while ((b_len > 0) && (name[b_len - 1] == ' ')) {
+        b_len--;
+    }
+    if ((a_len == 0) || (a_len != b_len)) {
+        return false;
+    }
+    for (int i = 0; i < a_len; i++) {
+        char a = config_name[i];
+        char b = name[i];
+
+        a = ((a >= 'a') && (a <= 'z')) ? (char)(a - 'a' + 'A') : a;
+        b = ((b >= 'a') && (b <= 'z')) ? (char)(b - 'a' + 'A') : b;
+        if (a != b) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The position now, for a beacon outside the beaconing: the GPS's when the APRS options say so and it is on, else
+// the fixed one (the configuration's, or the settings' location)
+static bool position_now(location_t *here)
+{
+    double lat;
+    double lon;
+
+    if ((aprs.s.state & STATE_LOCATION_FROM_GPS) && gps_on()) {
+        gps_data_t g;
+
+        gps_read(&g);
+        if (!(g.fix && g.has_position)) {
+            return false;
+        }
+        lat = g.latitude / 10000.0;
+        lon = g.longitude / 10000.0;
+    } else {
+        fixed_position(&lat, &lon);
+        if (isnan(lat)) {
+            return false;
+        }
+    }
+    here->time = systime_get_ms();
+    here->latitude = lat;
+    here->longitude = lon;
+    here->bearing = 0;
+    here->speed = 0;
+    return true;
+}
+
+// false: no configuration of that name, no position, or the radio refused (no transmit frequency, busy ...)
+static bool send_satellite_beacon(void)
+{
+    static codeplug_aprs_config_t channel_config; // the channel's, kept meanwhile (not on the input task's stack)
+    bool channel_has_config = aprs.has_config;
+    location_t here;
+    bool ok = false;
+    int index = 0;
+
+    if (aprs.waiting || aprs.dmr_waiting) {
+        return false;
+    }
+    for (int i = 1; (i <= CODEPLUG_APRS_CONFIGS_MAX) && (index == 0); i++) {
+        if (codeplug_get_aprs_config(i, &channel_config) && named(channel_config.name, satellite_asked_name)) {
+            index = i;
+        }
+    }
+    if (index == 0) {
+        return false;
+    }
+    // The satellite's configuration for this frame (its path, comment, symbol, fixed position), then the channel's
+    // again
+    memcpy(&channel_config, &aprs.config, sizeof(channel_config));
+    aprs.has_config = codeplug_get_aprs_config(index, &aprs.config);
+    aprs.fixed_lat = NAN;
+    aprs.fixed_lon = NAN;
+    if (aprs.has_config && position_now(&here)) {
+        uint16_t bits = build_frame(&here, &here);
+
+        aprs.request = radio_aprs_send(ax25.buffer, bits, (aprs.config.flags & 0x01) != 0, 0);
+        ok = (aprs.request != 0);
+    }
+    memcpy(&aprs.config, &channel_config, sizeof(aprs.config));
+    aprs.has_config = channel_has_config;
+    aprs.fixed_lat = NAN;
+    aprs.fixed_lon = NAN;
+    if (ok) {
+        aprs.waiting = true;
+        aprs.waiting_auto = false; // as a manual beacon: an error tone if it doesn't go out
+        aprs.sending = here;
+    }
+    return ok;
 }
 
 static bool corner_pegging(double *speed_mps, uint32_t *time_diff)
@@ -677,6 +917,7 @@ static void decay(bool reset_it)
 static void sent(bool ok)
 {
     aprs.waiting = false;
+    aprs.dmr_waiting = false;
     if (!aprs.waiting_auto) {
         if (!ok) {
             sound_play(SOUND_ERROR); // the radio task could not send it: busy channel, Rx only, out of band
@@ -769,7 +1010,6 @@ static void check(void)
 void aprs_tick(void)
 {
     codeplug_channel_t channel;
-    int index = 0;
     uint8_t mode = aprs.s.mode;
 
     if (!settings_valid()) {
@@ -780,14 +1020,26 @@ void aprs_tick(void)
         aprs.enabled = (aprs.s.mode != MODE_OFF); // aprsBeaconingStart() / Stop()
         reset(aprs.config_index);
     }
-    if (radio_get_channel(&channel) && (channel.mode == CODEPLUG_MODE_FM)) {
-        index = channel.aprs_config_index;
+    // In every mode, the configuration is the channel's own: a DMR, P25, AM or USB channel can name one, and then its
+    // beacon frequency is what the beacon uses. No configuration, no beacon.
+    if (radio_get_channel(&channel) && (channel.aprs_config_index != aprs.config_index)) {
+        reset(channel.aprs_config_index);
     }
-    if (index != aprs.config_index) {
-        reset(index);
-    }
-    if (aprs.waiting && !radio_aprs_busy()) {
-        sent(radio_aprs_sent());
+    // The AFSK frame and the LRRP report (each with the radio task when it was taken): done when both are
+    bool afsk_done = !aprs.waiting || (radio_result(aprs.request) != RADIO_PENDING);
+    bool dmr_done = !aprs.dmr_waiting || (radio_result(aprs.dmr_request) != RADIO_PENDING);
+
+    if ((aprs.waiting || aprs.dmr_waiting) && afsk_done && dmr_done) {
+        bool ok = true;
+
+        if (aprs.waiting) {
+            ok = ok && (radio_result(aprs.request) == RADIO_SENT);
+        }
+        if (aprs.dmr_waiting) {
+            aprs.dmr_ok = (radio_result(aprs.dmr_request) == RADIO_SENT);
+            ok = ok && aprs.dmr_ok;
+        }
+        sent(ok);
     }
 
     if (toggle_asked) {
@@ -806,6 +1058,12 @@ void aprs_tick(void)
     if (send_asked) {
         send_asked = false;
         if ((aprs.s.mode == MODE_OFF) || !send_beacon(true)) {
+            sound_play(SOUND_ERROR);
+        }
+    }
+    if (satellite_asked) {
+        satellite_asked = false;
+        if (!send_satellite_beacon()) {
             sound_play(SOUND_ERROR);
         }
     }
@@ -843,4 +1101,32 @@ void aprs_send(void)
 void aprs_after_ptt(void)
 {
     ptt_asked = true;
+}
+
+void aprs_send_satellite(const char *name)
+{
+    if (satellite_asked) {
+        return;
+    }
+    strncpy(satellite_asked_name, name, APRS_NAME_LENGTH);
+    satellite_asked_name[APRS_NAME_LENGTH] = 0;
+    satellite_asked = true;
+}
+
+bool aprs_is_sending(void)
+{
+    return aprs.waiting || satellite_asked;
+}
+
+void aprs_debug_status(uint32_t *flags, int32_t *lat_e7, int32_t *lon_e7)
+{
+    double lat;
+    double lon;
+
+    fixed_position(&lat, &lon);
+    *flags = ((uint32_t)aprs.enabled << 0) | ((uint32_t)aprs.has_config << 1) |
+             ((uint32_t)position_valid() << 2) | ((uint32_t)aprs.dmr_waiting << 3) |
+             ((uint32_t)aprs.dmr_ok << 4) | ((uint32_t)aprs.s.mode << 5);
+    *lat_e7 = isnan(lat) ? 0 : (int32_t)llround(lat * 1E7);
+    *lon_e7 = isnan(lon) ? 0 : (int32_t)llround(lon * 1E7);
 }

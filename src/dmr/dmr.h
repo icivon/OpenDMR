@@ -49,8 +49,16 @@ void dmr_transmit(bool on);     // the PTT: the engine wakes the repeater if nee
 void dmr_set_tx_id(uint32_t id); // the TG, or TX_TARGET_PC_FLAG << 24 | the called ID (tx_target.c)
 void dmr_set_own_id(uint32_t id); // the DMR ID changed (number entry)
 bool dmr_is_transmitting(void); // asked or still ending
-bool dmr_has_sync(void);        // a DMR signal's timeslots found (scan)
+bool dmr_has_sync(void);        // a DMR signal's timeslots found (scan; kept after the signal)
+bool dmr_channel_busy(void);    // a DMR call on the channel now (its timeslots followed)
 bool dmr_repeater_failed(void); // the repeater didn't wake up
+
+// APRS over DMR: one LRRP position report to a gateway, reusing the current DMR channel. Coordinates are 1e-7 degrees.
+bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
+                            uint32_t destination, uint32_t source);
+bool dmr_aprs_busy(void);   // a queued report is still being transmitted
+bool dmr_aprs_failed(void); // it ended without transmitting (wake failure, engine reset, radio task abort)
+void dmr_aprs_cancel(void); // drop it and leave the engine in receive
 
 typedef struct {
     uint32_t source;   // the caller's DMR ID

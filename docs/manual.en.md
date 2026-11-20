@@ -405,7 +405,11 @@ E / W). The battery graph has a point every 40 s (6.4 – 8.2 V).
 Needs **the time and your location** (Radio info, or the GPS) and **the satellite keps written by the CPS**. Then:
 the coming passes of all the satellites; open one for the pass (polar track, azimuth / elevation) and the Doppler
 corrected frequencies (the menu key switches voice / APRS / other). The pass screen tunes the radio with the Doppler
-correction, and the PTT transmits on the corrected frequency of that moment. Without keps: "List empty — Load keps
+correction, and the PTT transmits on the corrected frequency of that moment. On the **APRS** frequencies the PTT sends
+an APRS beacon through the satellite's digipeater instead of voice (as OpenGD77): it uses the APRS configuration
+**named as the satellite** (one named ISS with the path RS0ISS, SONATE-2 with DP0SNX ...), made on the CPS's APRS page,
+and the position of the APRS options (the GPS or the fixed one). No configuration of that name, or no position: an
+error tone. Without keps: "List empty — Load keps
 with CPS".
 
 ### GPS
@@ -481,13 +485,17 @@ colours and bands):
 
 | Theme | |
 |---|---|
-| Auto (the default) | Sunlight from 7:00 to 19:00 local time, Deep sea at night and without a clock |
+| Auto (the default) | Light theme from sunrise to sunset, dark theme overnight. Uses a GPS fix or the saved location. Without a location, daylight is 07:00–19:00 local time. Without a valid clock, the theme is dark. Auto night uses the same night period for backlight brightness |
 | Deep sea | Dark: navy, a sea blue band, cyan for what is selected |
 | Sunlight | Light, for outdoors: black text, every layer dark enough for bright light |
 | Clear sky | Light: white, a royal blue band, orange for what is selected |
 | Graphite | Dark: graphite and orange |
 | Night amber | Dark: amber on black, as night vision gear |
 | High contrast | Light: black on white, a black band, yellow for what is selected |
+
+In Display options, enable Auto timezone and select Local time to display local time including daylight saving.
+The radio uses a GPS fix or the saved location. The built-in database covers 2026–2040. The manual Timezone
+setting applies when the location has no match or the date is outside that range.
 
 <img src="manual/themes.png" alt="The six themes">
 
@@ -540,9 +548,26 @@ Read only: the factory calibration table (oscillator tune, receive level, power 
 - Location: the fixed location of the channel's APRS configuration, or the GPS;
 - Interval, Decay, Compress; for Smart: Slow / Fast Rate, Low / Hi Speed, Turn Angle / Slope / Time.
 - SK1 + 1 switches APRS on / off at any time. Beacons are sent as AFSK (1200 baud) in FM.
+- The APRS configuration's "Beacon Tx frequency" (in the CPS) is the frequency the beacon is sent on, in every mode but
+  PTT (the beacon goes out on the channel after each transmission). A channel opts in by naming a configuration: one
+  without it never beacons, and a receive-only channel never beacons either. With no beacon frequency, an FM channel
+  beacons on its own frequency; a DMR, P25, NXDN, AM or USB channel never beacons. PTT mode beacons only on FM
+  channels. The radio's channel editor offers the APRS configuration only on FM channels; on a DMR, P25 or NXDN channel
+  it can only be set with the CPS. While the beacon goes out the radio tunes FM to that frequency for the frame and
+  comes back: the channel you had selected is left as it was, and a call being received holds the beacon for the next
+  round.
 - "Transmit QSY" (in the APRS configuration, in the CPS): the beacon's comment begins with the channel's voice
   frequency, its Tx tone and offset, e.g. "146.520MHz T100 +000" (Toff: no tone; lower case on a narrow channel),
   which aprs.fi and APRS radios read as the frequency to call you on.
+- Send via: **AFSK** (the default: the FM beacon above) / **DMR** / **Both**. DMR: on a DMR channel the position goes
+  to an APRS gateway as an LRRP data report, without retuning, on the channel's own timeslot and colour code; it waits
+  for a free channel first (2 s at most), and a PTT pressed while it is sent waits for it, then the voice goes out. The
+  radio needs its DMR ID. Both: each path the channel can take; on a DMR channel with a beacon frequency the AFSK
+  beacon goes first, then the LRRP report.
+- Gateway: the DMR ID of the gateway that receives the LRRP reports, 222999 by default (BrandMeister's APRS gateway);
+  the menu key opens the number entry.
+- Send via and the gateway are kept in the radio, not in the CPS's settings. Sending over DMR is still experimental: a
+  gateway decoding the report hasn't been confirmed yet.
 
 ---
 
@@ -650,5 +675,4 @@ firmware: see the README.
 - P25: simplex group calls in clear only; known issues in [docs/p25.md](p25.md), section 6.
 - NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
   ID to callsign database yet.
-- Not fully tested on the air yet: APRS beacons received by an APRS decoder (their frames are checked; the radio itself
-  does not decode APRS), the hotspot's CW ID, satellite passes, talkaround, distance sort.
+- Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.
