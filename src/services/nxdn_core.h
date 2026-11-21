@@ -34,6 +34,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "fsk4.h"
+
 #define NXDN_FS          8000
 #define NXDN_FRAME_SYMS  192
 #define NXDN_RING        2048 // filtered samples kept (256 ms; a frame is 640)
@@ -69,9 +71,9 @@ typedef struct {
     // the input chain
     int32_t x_prev;              // for the inverse of the de-emphasis
     int32_t hist[NXDN_LP_TAPS];  // the low-pass's input
-    int hist_pos;
-    int32_t ring[NXDN_RING];     // filtered samples, ring[n % NXDN_RING] sample n (within +-65535)
-    uint32_t n;                  // samples in so far
+    fsk4_fir lp;                 // the low-pass (fsk4.h)
+    int32_t buf[NXDN_RING];      // filtered samples (within +-65535)
+    fsk4_ring ring;
     // the frame timing (samples Q12)
     int state;                   // 0 hunting, 2 deciding between the candidates, 1 locked
     int32_t hunt_t;              // hunting: the next start to try

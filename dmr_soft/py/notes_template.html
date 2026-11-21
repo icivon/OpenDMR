@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DMR 软件接收</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --fg: #1c2230; --muted: #5b6475; --line: #d5dae3;
+  --sig: #2f6db5; --sig2: #c7861a; --chip: #8a93a6; --good: #2f8a4a; --bad: #c8382f; --soft: #e8eef8;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151c; --panel: #1a1f29; --fg: #e3e7ef; --muted: #9aa3b5; --line: #323a49;
+    --sig: #5b9be0; --sig2: #e0a23d; --chip: #6d7689; --good: #5cc27a; --bad: #f0665c; --soft: #22324a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151c; --panel: #1a1f29; --fg: #e3e7ef; --muted: #9aa3b5; --line: #323a49;
+  --sig: #5b9be0; --sig2: #e0a23d; --chip: #6d7689; --good: #5cc27a; --bad: #f0665c; --soft: #22324a;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.75;
+  margin: 0; padding: 28px 16px 56px; }
+main { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+h1 { font-size: 1.7rem; margin: 0; }
+h2 { font-size: 1.15rem; margin: 0 0 4px; }
+.lede { color: var(--muted); margin: 6px 0 0; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+section p, section li { margin: 0; max-width: 80ch; }
+ul { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; }
+.fig { overflow-x: auto; }
+.fig svg { display: block; min-width: 720px; width: 100%; height: auto; }
+.math { font-family: var(--font-mono); background: var(--soft); border-radius: 6px; padding: 8px 12px; overflow-x: auto;
+  white-space: pre; font-size: 13.5px; }
+code { font-family: var(--font-mono); font-size: 0.92em; }
+.key { border-left: 3px solid var(--good); padding-left: 12px; }
+table { border-collapse: collapse; font-size: 14px; }
+td, th { border-bottom: 1px solid var(--line); padding: 5px 12px; text-align: left; }
+th { color: var(--muted); font-weight: 500; }
+svg .ax { stroke: var(--muted); stroke-width: 1; }
+svg .lvl { stroke: var(--line); stroke-width: 1; }
+svg .thr { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; }
+svg .ddthr { stroke: var(--good); stroke-width: 2; }
+svg .symt { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+svg .curve { fill: none; stroke: var(--sig); stroke-width: 1.6; }
+svg .samp { fill: var(--sig); }
+svg .symv { fill: var(--sig2); }
+svg .fitlv { stroke: var(--fg); stroke-width: 2.2; }
+svg .resid { stroke: var(--bad); stroke-width: 1.6; }
+svg .bar { fill: var(--sig); }
+svg .bar2 { fill: var(--sig2); }
+svg .barc { fill: var(--chip); }
+svg .hbar { fill: var(--sig); opacity: .75; }
+svg .t { fill: var(--fg); font: 13px var(--font-body); }
+svg .tm { fill: var(--muted); font: 12px var(--font-body); }
+svg .tv { fill: var(--fg); font: 600 11.5px var(--font-mono); }
+svg .blk rect { fill: var(--soft); stroke: var(--sig); stroke-width: 1.2; }
+svg .arr line { stroke: var(--muted); stroke-width: 1.4; }
+svg .arrow { fill: var(--muted); }
+svg .slotA { fill: var(--sig); opacity: .85; }
+svg .slotB { fill: var(--line); }
+svg .bit1 { fill: var(--fg); }
+svg .bit0 { fill: var(--line); }
+svg .mask { fill: none; stroke: var(--good); stroke-width: 2.4; }
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>DMR 软件接收：在弱信号下把误码降下来</h1>
+<p class="lede">OpenDMR（DM-32），2026-11-20。DMR 从 HR_C7000 的硬件同步改为软件解调：同一颗芯片只录鉴频器输出（8 kHz），
+其余全在 CPU 上做。下文的图都由实际录音（约 −116 dBm 的已知内容发射）算出。代码：<code>src/services/dmr_demod.c</code>、
+<code>dmr_l2.c</code>、<code>dmr_soft.c</code>，共用部分 <code>fsk4.c</code>、<code>afrx.c</code>；分支 feature/dmr-soft，PR #93。</p>
+</header>
+
+<section>
+<h2>结论</h2>
+<div class="fig">$live</div>
+<p class="key">弱信号下软件比芯片好：−116 dBm 直通坏帧 0%（芯片 0.3%），纠错后全对 92%（芯片 67%）；热点 −122 dBm 坏帧约 2.6%（芯片 14.3%）。
+关键不是"更快"，而是三件事：<b>匹配滤波</b>把噪声带宽压下来，<b>每个突发自己算判决门限</b>，<b>均衡</b>掉低采样率下的码间干扰。</p>
+<p>"坏帧"按我们解码器的规则：AMBE+2 帧的 C0 + C1 两个 Golay 块共纠了 3 个以上的错误。"第 2、3 帧"：每个突发的第 1 帧被我们自己发射端损坏（另案），比较时去掉。</p>
+</section>
+
+<section>
+<h2>1. 接收链</h2>
+<div class="fig">$pipeline</div>
+<p>HR_C7000 的 FM 录音固定 8 kHz，DMR 是 4800 符号/秒，每个符号只有 <b>5/3 ≈ 1.67 个采样</b>。M17 也是 4800 Bd，直接插值就够；
+DMR 在弱信号下不够，下面每一步都是为了把这 1.67 个采样用好。</p>
+</section>
+
+<section>
+<h2>2. 采样很稀：符号值靠插值读出来</h2>
+<div class="fig">$samples</div>
+<p>4FSK 的四个电平是 ±1、±3（×偏移量）。符号时刻一般不落在采样上，用三次插值（Catmull-Rom）在符号时刻取值，再判到最近的电平。
+门限在 0、±2。一个符号离门限只有 1 个电平的余量——噪声、电平偏差、邻居符号的串扰，哪一个吃掉这 1 个电平，就是一个错比特。</p>
+</section>
+
+<section>
+<h2>3. 匹配滤波：RRC</h2>
+<div class="fig">$rrc</div>
+<p>发射端用根升余弦成形（α = 0.2），接收端再过一个同样的 RRC，信号能量全部收下，带外噪声去掉——这是"匹配滤波"，在白噪声下信噪比最大。
+8 kHz 下只有 21 个系数，每个采样 21 次乘加，CPU 很轻。</p>
+<div class="math">y[n] = Σ h[k]·x[n−k]，  h = RRC(α=0.2)，跨 ±6 个符号，量化为 Q12（和 = 4096）</div>
+<p>单独加 RRC，离线"纠错后全对"只从 29% 到 33%——因为它带来了新问题：发射和接收两个 RRC 合起来才是无码间干扰的升余弦，
+而鉴频器、FM 带宽和插值都破坏了这个条件，剩下的码间干扰在第 6 节处理。</p>
+</section>
+
+<section>
+<h2>4. 定时、增益、直流：同步字最小二乘</h2>
+<div class="fig">$syncfit</div>
+<p>每个同步字 24 个符号的电平 s<sub>k</sub> 已知。把插值值 v<sub>k</sub> 写成 g·s<sub>k</sub> + dc，最小二乘一次解出增益和直流：</p>
+<div class="math">g  = (N·Σs·v − Σs·Σv) / (N·Σs² − (Σs)²)
+dc = (Σv − g·Σs) / N
+误差 = mean( ((v − dc)/g − s)² )      单位：电平²；信号 0.03–0.2，噪声 &gt; 0.6</div>
+<p>在 ±1 个采样内、每 1/6 采样试一次，误差最小处就是同步的精确时刻。这同时给出三个量：<b>定时</b>（精度约 1/12 符号）、<b>增益</b>、<b>直流</b>，
+比"找过零点"稳得多，弱信号下尤其如此。</p>
+</section>
+
+<section>
+<h2>5. 时间轴：同步之间靠外推</h2>
+<div class="fig">$timeline</div>
+<p>语音超帧 6 个突发只有 A 带同步。B–F 用同一条时间轴外推：30 ms 正好 240 个采样，两端晶振差几 ppm，360 ms 里漂移不到 0.01 个采样，可以忽略。
+每个突发仍在预期位置附近试一下同步：数据突发、BS 的另一个时隙都带同步，能随时校正。</p>
+<p>另一次发射（例如对方换人说话）相位完全不同：跟踪窗口外发现强同步就立即换时间轴，不等丢锁超时。</p>
+</section>
+
+<section>
+<h2>6. 每个突发自己算门限（判决引导电平）</h2>
+<div class="fig">$hist</div>
+<p>按同步算出的 g、dc 归一化后，四个电平簇的实际中心是 $m3、$m1、$p1、$p3，不是 −3、−1、+1、+3：内层两簇不对称，
+零门限应在 $t0。原因是 FM 鉴频器的非线性、频偏、直流漂移，而且每个突发都不一样。</p>
+<div class="math">先用当前门限判一遍 → 四簇各求平均 m₋₃, m₋₁, m₊₁, m₊₃
+新门限 = 相邻中心的中点：(m₋₃+m₋₁)/2, (m₋₁+m₊₁)/2, (m₊₁+m₊₃)/2
+分段线性映射：这三点 → −2, 0, +2；中心 → ±1、±3</div>
+<p>只用一个突发 132 个符号就够估四个中心（每簇约 33 个）。这一步把"纠错后全对"从 33% 拉到 45%，原始误码率已经低于芯片——
+但还不够，见下一节。</p>
+</section>
+
+<section>
+<h2>7. 码间干扰与 3 抽头均衡</h2>
+<div class="fig">$isi</div>
+<p>按邻居分组看：两个邻居都是 +3（和 = +6）时，本符号平均被推高 $b6 个电平；都是 −3 时被拉低 $bm6。判决余量只有 1 个电平，
+这接近半个电平的串扰在弱信号下就是大量错误。它大体和邻居之和成正比，所以用一个 3 抽头的线性均衡减掉：</p>
+<div class="math">y[k] = 0.95·z[k] − 0.05·(z[k−1] + z[k+1])        定点：(243·z[k] − 13·(z[k−1]+z[k+1])) / 256</div>
+<p>系数是在录音上用判决值做最小二乘求出的，换一半数据训练、另一半测试结果一样（88.1% / 89.4%），两次求出的系数都约为
+[−0.05, 0.95, −0.05]，所以固件里写成固定值。均衡后两端的偏移从 $bm6 / $b6 降到 $am6 / $a6：没有完全消掉（剩下的部分不是线性的，
+见第 12 节的 MLSE），但已足够让误码最多的那些符号回到门限内侧。这是收益最大的一步：45% → 88%。</p>
+<div class="fig">$progression</div>
+</section>
+
+<section>
+<h2>8. 为什么"每比特误码更低"还不够：错误的分布</h2>
+<div class="fig">$blocks</div>
+<p>AMBE+2 一帧 72 比特：C0（Golay 24,12）和 C1（Golay 23,12）有纠错，C2（11 位）和 C3（14 位）<b>没有任何保护</b>，错一位就错一个参数。
+只做判决电平时，软件的原始误码率已经比芯片低，但全对的帧反而更少：芯片的错误成堆出现在少数帧里，其余帧干净；软件的错误均匀散开，
+每帧都可能有一两位落在 C2/C3。所以对 DMR 来说，降低<b>每一个比特</b>的误码率（均衡）比"纠错更强"重要——没有保护的 25 位只能靠原始误码率。</p>
+<p>试过 Chase 软判决译码（翻转 C0/C1 里最不可靠的几位再译）：收益很小，因为剩下的错误主要在 C2/C3。</p>
+</section>
+
+<section>
+<h2>9. 设备上的代价</h2>
+<div class="fig">$mask</div>
+<ul>
+<li>第一版在设备上每 32 ms 的数据要算 113 ms：捕获时每 1/3 个采样对 4 种同步字插值，符号时刻还用了 64 位除法（这颗 CPU 没有）。</li>
+<li>改成：符号时刻用 32 位整数；捕获先用符号位掩码筛（上图），通过的才插值拟合；跟踪时每个位置只插值一次、8 种同步字共用。现在每 32 ms 最多 14–30 ms。</li>
+<li>RAM：解调状态、语音队列约 18.8 KB，与 NXDN 的状态在链接脚本里放在同一地址（两者不会同时运行）。</li>
+</ul>
+</section>
+
+<section>
+<h2>10. 二层与通话</h2>
+<ul>
+<li>纠错码全部按 ETSI TS 102 361-1 自己实现：Slot Type Golay(20,8)、EMB QR(16,7,6)、TACT Hamming(7,4)、BPTC(196,96)、RS(12,9)+数据类型掩码（纠 1 字节）、嵌入式 LC。</li>
+<li>时隙：基站信号看 CACH 的 TC（指<b>后一个</b>突发的时隙，实测热点 TS1 语音前 TC = 0）；直通 TDMA 看同步字；普通直通（MS 同步）只有一个发射者。</li>
+<li>EMB 的 QR(16,7) 能纠 2 位，随机噪声约 1/4 的概率"通过"。所以 EMB 还要求色码和本次通话一致；没有同步字的 A 突发只在 mse &lt; 0.30 时接受——否则发射结束后会把噪声当语音播。</li>
+<li>Hamming(7,4) 是完备码，任何 7 位都能"译出"，TACT 不能拿来判断有没有信号。</li>
+</ul>
+</section>
+
+<section>
+<h2>11. 评估时踩过的坑</h2>
+<ul>
+<li>最早的结论是"软件比芯片差 10–20 倍"，错在统计：录音里有发射开头的语音头/数据突发和两次发射之间的时间轴跳变，从一个同步向前后外推，整个突发的噪声都被算成坏帧。改为按语音超帧统计后，同样的录音软件并不差。</li>
+<li>只看"原始误码率"会误判（第 8 节）；只看"坏帧（C0+C1&gt;3）"看不到 C2/C3 的错误。已知内容（发射端每帧都是 1031 Hz 音调帧）+"纠错后全对"最能反映听感。</li>
+<li>Python 原型和 C 实现在同一批录音上对比（<code>dmr_soft/c/demod_test.c</code>），一致后才上机。</li>
+</ul>
+</section>
+
+<section>
+<h2>12. 还能做的</h2>
+<ul>
+<li>判决引导的定时：每个突发用判决值再微调一次定时（目前只靠同步字）。</li>
+<li>突发内分两半各估一次电平（长突发内直流漂移）。</li>
+<li>最大似然序列估计（MLSE / Viterbi 均衡）代替线性均衡：码间干扰只涉及前后各一个符号，状态数 16，计算量可接受。</li>
+<li>发射端：每个突发第 1 帧损坏、直通发射没有终止帧（最后约 25 ms 无调制载波），这两个直接影响别人收我们的距离，单独修。</li>
+</ul>
+</section>
+</main>
+</body>
+</html>

@@ -46,7 +46,9 @@ void codecInit(bool fromVoicePrompts)
 	{
 		return;
 	}
-	vocoder_sync();
+	if (!vocoder_sync()) { // another overlay's (P25, NXDN, M17): not ours to start
+		return;
+	}
 	vocoderReset();
 	soundInit();
 }
@@ -55,7 +57,9 @@ void codecDecode(uint8_t *indata_ptr, int numbBlocks)
 {
 	static int16_t pcm[160];
 
-	vocoder_sync();
+	if (!vocoder_sync()) {
+		return;
+	}
 	for (int idx = 0; idx < numbBlocks; idx++)
 	{
 		vocoderDecodeFrame(indata_ptr + 9 * idx, pcm);
@@ -72,7 +76,9 @@ void codecEncodeBlock(uint8_t *outdata_ptr)
 {
 	static int16_t pcm[160];
 
-	vocoder_sync();
+	if (!vocoder_sync()) {
+		return;
+	}
 	for (int half = 0; half < 2; half++)
 	{
 		soundRetrieveBuffer();

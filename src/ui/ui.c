@@ -76,9 +76,15 @@ int ui_key_digit(uint8_t key)
     return (key < UI_KEY_COUNT) ? (digits[key] - 1) : -1;
 }
 
+volatile uint32_t ui_post_drops; // events lost: the queue full (over the cable)
+
 bool ui_post(const ui_event_t *ev)
 {
-    return queue && (xQueueSend(queue, ev, 0) == pdTRUE);
+    bool ok = queue && (xQueueSend(queue, ev, 0) == pdTRUE);
+    if (!ok) {
+        ui_post_drops++;
+    }
+    return ok;
 }
 
 bool ui_post_from_isr(const ui_event_t *ev)

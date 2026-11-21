@@ -75,7 +75,7 @@
 
 #define INCLUDE_vTaskPrioritySet            1
 #define INCLUDE_uxTaskPriorityGet           1
-#define INCLUDE_vTaskDelete                 0
+#define INCLUDE_vTaskDelete                 1 // the M17 receiver's task: its stack in the overlay RAM
 #define INCLUDE_vTaskSuspend                1
 #define INCLUDE_vTaskDelayUntil             1
 #define INCLUDE_vTaskDelay                  1

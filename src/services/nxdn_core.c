@@ -73,7 +73,7 @@
 static const int8_t fsw[10] = {-3, 1, -3, 3, -3, -3, 3, 3, -1, 3}; // zero mean, sum of squares 74
 #define FSW_NORM2 74
 
-static int32_t lp[NXDN_LP_TAPS];
+static int16_t lp[NXDN_LP_TAPS]; // Q13
 static uint8_t pn[PAYLOAD]; // the scrambler's bits: 1 inverts the symbol
 static bool tables_ready;
 
@@ -93,7 +93,7 @@ static void tables(void)
     }
     for (int i = 0; i < NXDN_LP_TAPS; i++) {
         float q = h[i] / sum * (float)(1 << LP_SHIFT);
-        lp[i] = (int32_t)((q >= 0.0f) ? (q + 0.5f) : (q - 0.5f));
+        lp[i] = (int16_t)((q >= 0.0f) ? (q + 0.5f) : (q - 0.5f));
     }
     // TS 1-A 4.6: S8 .. S0 from 0 1 1 1 0 0 1 0 0; out S0, S0 ^ S4 shifted in at S8
     uint16_t s = 0x0E4; // bit k = S_k
@@ -110,6 +110,8 @@ void nxdn_rx_init(nxdn_rx *r, nxdn_frame_cb cb, void *ctx)
 {
     tables();
     memset(r, 0, sizeof(*r));
+    fsk4_ring_init(&r->ring, r->buf, NXDN_RING);
+    fsk4_fir_init(&r->lp, lp, r->hist, NXDN_LP_TAPS, LP_SHIFT);
     r->cb = cb;
     r->ctx = ctx;
     r->period = SPS_NOMINAL;
@@ -120,20 +122,10 @@ void nxdn_rx_init(nxdn_rx *r, nxdn_frame_cb cb, void *ctx)
 
 /* ---- sample access ---- */
 
-// the filtered signal at time t (samples Q12), cubic (Catmull-Rom) between the samples, the fraction in Q8; the
-// samples within +-2^16 keep every product within 32 bits
+// the filtered signal at time t (samples Q12), cubic (fsk4.c)
 static int32_t at(const nxdn_rx *r, int32_t t)
 {
-    int32_t i = t >> Q;
-    int32_t u = (t & (ONE - 1)) >> (Q - 8);
-    int32_t p0 = r->ring[(uint32_t)(i - 1) % NXDN_RING];
-    int32_t p1 = r->ring[(uint32_t)i % NXDN_RING];
-    int32_t p2 = r->ring[(uint32_t)(i + 1) % NXDN_RING];
-    int32_t p3 = r->ring[(uint32_t)(i + 2) % NXDN_RING];
-    int32_t c3 = 3 * (p1 - p2) + p3 - p0;
-    int32_t c2 = 2 * p0 - 5 * p1 + 4 * p2 - p3 + ((u * c3) >> 8);
-    int32_t c1 = p2 - p0 + ((u * c2) >> 8);
-    return p1 + ((u * c1) >> 9);
+    return fsk4_at(&r->ring, t);
 }
 
 static uint32_t isqrt64(uint64_t v)
@@ -427,7 +419,7 @@ static void candidate(nxdn_rx *r, int32_t t, int32_t c)
 
 static void process(nxdn_rx *r)
 {
-    int32_t have = (int32_t)(r->n << Q);
+    int32_t have = (int32_t)(r->ring.n << Q);
     int32_t span = 9 * r->period + 3 * ONE; // what an FSW needs from its start
     int32_t oldest = have - ((NXDN_RING - 8) << Q);
 
@@ -574,22 +566,13 @@ void nxdn_rx_samples(nxdn_rx *r, const int16_t *x, int count)
         int32_t y = s + ((r->deemph_q4 * (s - r->x_prev)) >> 4); // the receive de-emphasis undone
         r->x_prev = s;
         y = (y > 131071) ? 131071 : ((y < -131071) ? -131071 : y);
-        r->hist[r->hist_pos] = y;
-        int32_t acc = 0;
-        int k = r->hist_pos;
-        for (int j = 0; j < NXDN_LP_TAPS; j++) {
-            acc += lp[j] * r->hist[k];
-            k = (k == 0) ? (NXDN_LP_TAPS - 1) : (k - 1);
-        }
-        r->hist_pos = (r->hist_pos + 1) % NXDN_LP_TAPS;
-        acc >>= LP_SHIFT;
-        r->ring[r->n % NXDN_RING] = (acc > SAMPLE_MAX) ? SAMPLE_MAX : ((acc < -SAMPLE_MAX) ? -SAMPLE_MAX : acc);
-        r->n++;
+        int32_t acc = fsk4_fir_step(&r->lp, y);
+        fsk4_put(&r->ring, (acc > SAMPLE_MAX) ? SAMPLE_MAX : ((acc < -SAMPLE_MAX) ? -SAMPLE_MAX : acc));
     }
     process(r);
     // the times kept small (32-bit Q12 times need them under 2^19 samples), moved back by a multiple of the ring
-    if (r->n >= REBASE_AT) {
-        r->n -= REBASE_BY;
+    if (r->ring.n >= REBASE_AT) {
+        fsk4_rebase(&r->ring, REBASE_BY);
         r->t0 -= (int32_t)(REBASE_BY << Q);
         r->hunt_t -= (int32_t)(REBASE_BY << Q);
         if (r->hunt_first >= 0) {

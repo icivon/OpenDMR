@@ -190,7 +190,7 @@ python nxdn/py/frames.py "nxdn/data/iq/NXDN96 IQ.wav"
 ## 固件里的 NXDN48 接收（2026-11-17 晚，能出声）
 
 - 信道模式 NXDN（`CODEPLUG_MODE_NXDN` 6，写频数据里存成数字信道 + `opendmr_mode` 0xA5），模式键在 P25 之后。
-- 通路：FD6818 保持 DMR 设置，HR_C7000 切 FM 录音（`nxdn_fm_start()` / `nxdn_fm_read()`，p25_phy.c：`WORK_MODE` 0x80，
+- 通路：FD6818 保持 DMR 设置，HR_C7000 切 FM 录音（`afrec_start()` / `afrec_read()`，p25_phy.c：`WORK_MODE` 0x80，
   `FM_BANDWIDTH` 0x1F，`FM_DEV_COEF` 0x40A25，DMR 的中断处理让开）→ `nxdn_core.c`（解调、找帧、解帧）→ `nxdn_radio.c`
   （通话、主叫 / 组号 / RAN 显示、最近呼叫）→ 我们的 AMBE+2 解码器 → 提示音 FIFO 播放（调制解调器一直在 FM，不能用 DMR 的播放通路）。
 - **CPU 没有浮点单元**（浮点乘法约 1.6 µs，整数乘加 0.03 µs）：`nxdn_core.c` 全部定点（采样 int32，时间 Q12，符号 Q8），

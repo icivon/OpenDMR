@@ -47,8 +47,8 @@ SECTIONS
 		. = ALIGN(0x4) ;
 		*crt0.o(.text)
 		__stext = . ;
-		*(EXCLUDE_FILE(*/startup/* */freertos/* */vocoder/ambe_enc* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.*) .text)
-		*(EXCLUDE_FILE(*/startup/* */freertos/* */vocoder/ambe_enc* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.*) .text*)
+		*(EXCLUDE_FILE(*/startup/* */freertos/* */vocoder/ambe_enc* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.* */services/c2dec.o */services/c2enc.o) .text)
+		*(EXCLUDE_FILE(*/startup/* */freertos/* */vocoder/ambe_enc* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.* */services/c2dec.o */services/c2enc.o) .text*)
 		. = ALIGN(0x10) ;
 		__etext = . ;
     } > MEM0
@@ -75,7 +75,7 @@ SECTIONS
     .rodata : {
 		. = ALIGN(0x4) ;
 		__srodata = . ;
-		*(.rodata*)
+		*(EXCLUDE_FILE(*/services/c2dec.o */services/c2enc.o) .rodata*)
 		*(.flashconst*)
 		. = ALIGN(0x4) ;
 		__erodata = . ;
@@ -95,12 +95,12 @@ SECTIONS
 	.bss : {
 		. = ALIGN(0x4) ;
 		__bss_start = . ;
-		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.*) .sbss)
-		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.*) .sbss.*)
+		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.* */services/c2dec.o */services/c2enc.o) .sbss)
+		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.* */services/c2dec.o */services/c2enc.o) .sbss.*)
 		*(.scommon)
-		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.*) .bss)
-		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.*) .bss.*)
-		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.*) COMMON)
+		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.* */services/c2dec.o */services/c2enc.o) .bss)
+		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.* */services/c2dec.o */services/c2enc.o) .bss.*)
+		*(EXCLUDE_FILE(*/vocoder/ambe_* */p25/imbe/imbe_dec* */p25/imbe/imbe_parms* */p25/imbe/imbe_enc* */p25/imbe/imbe_ana.* */services/c2dec.o */services/c2enc.o) COMMON)
 		. = ALIGN(0x10) ;
 		__end = . ;
 	} > MEM1
@@ -126,7 +126,8 @@ SECTIONS
 	   0x44400; fw_update.py checks the address and the size). Kept where and as large as it always was, so any
 	   version updates any other; the vocoder is in it, unused while the update runs.
 	   The P25 receiver's IMBE decoder (p25/c/imbe: its code, the tables of the hot loops, its state and the received
-	   audio) shares that RAM: one overlay or the other is loaded (dmr/vocoder.c overlay_use()), DMR or P25. */
+	   audio) shares that RAM, and so does M17's Codec 2 decoder and encoder (services/c2dec.c, c2enc.c, their state): one overlay at a
+	   time is loaded (dmr/vocoder.c overlay_use()), DMR, P25 or M17. */
 	__update_area_start = 0x00044400 ;
 	__update_area_end = 0x00056F24 ;
 	OVERLAY 0x00044400 : AT(LOADADDR(.text_in_ram) + SIZEOF(.text_in_ram)) {
@@ -154,9 +155,27 @@ SECTIONS
 			. = ALIGN(0x4) ;
 			__p25_ram_end = . ;
 		}
+		.m17_overlay {
+			__m17_ram_start = . ;
+			*/services/c2dec.o(.text* .rodata*) /* the Codec 2 decoder, its tables */
+			*/services/c2enc.o(.text* .rodata*) /* the encoder (M17 transmit) */
+			*/services/c2dec.o(.sbss* .bss* COMMON)
+			*/services/c2enc.o(.sbss* .bss* COMMON)
+			*(.m17_bss*)
+			. = ALIGN(0x4) ;
+			__m17_ram_end = . ;
+		}
 	}
+	/* The software receivers' state that goes with the vocoder (NXDN, DMR: services/afrx.c runs one at a time): after
+	   the vocoder's own RAM, both at the same address, valid while the AMBE overlay is claimed; not loaded (each
+	   receiver sets its own up). */
+	.nxdn_rx __vocoder_ram_end (NOLOAD) : { *(.nxdn_bss*) }
+	.dmrs_rx __vocoder_ram_end (NOLOAD) : { *(.dmrs_bss*) }
+	ASSERT(ADDR(.nxdn_rx) + SIZEOF(.nxdn_rx) <= 0x00057000, "the NXDN receiver's RAM runs into the start stack")
+	ASSERT(ADDR(.dmrs_rx) + SIZEOF(.dmrs_rx) <= 0x00057000, "the DMR receiver's RAM runs into the start stack")
 	__vocoder_flash_start = LOADADDR(.vocoder_overlay);
 	__p25_flash_start = LOADADDR(.p25_overlay);
+	__m17_flash_start = LOADADDR(.m17_overlay);
 	__text_in_ram_load = LOADADDR(.text_in_ram);
 
 	/* the start stack is at _estartstack, not a section */
@@ -165,6 +184,7 @@ SECTIONS
     ASSERT(g_top_irqstack <= __update_area_start, "RAM overflow: bss and the IRQ stack run into the vocoder / update area")
     ASSERT(__vocoder_ram_end <= __update_area_end, "The vocoder does not fit in its RAM")
     ASSERT(__p25_ram_end <= __update_area_end, "The P25 decoder does not fit in its RAM")
+    ASSERT(__m17_ram_end <= __update_area_end, "The M17 receiver does not fit in its RAM")
     ASSERT(__update_area_end <= _estartstack - 0x1000, "The update area leaves less than 4 KB for the start stack")
     ASSERT(__vocoder_ram_end <= _estartstack - 0x1000, "Our vocoder leaves less than 4 KB for the start stack")
 }

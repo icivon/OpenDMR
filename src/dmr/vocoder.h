@@ -33,13 +33,21 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Copies the vocoder into its RAM if it isn't there yet; the HR_C7000 task only
-void vocoder_sync(void);
+// Copies the vocoder into its RAM if it isn't there yet; the HR_C7000 task only. false: the RAM is another overlay's
+// owner's (overlay_claim()): the vocoder not there, the caller does without it
+bool vocoder_sync(void);
 
 // The overlay RAM (ckcpu.ld): our AMBE vocoder (DMR) or the P25 receiver's IMBE decoder, one at a time. Loads the one
 // asked for (zeroing its variables) if the other one is there.
-enum { OVERLAY_NONE, OVERLAY_AMBE, OVERLAY_P25 };
+enum { OVERLAY_NONE, OVERLAY_AMBE, OVERLAY_P25, OVERLAY_M17 };
 void overlay_use(int which);
+// The owner of the overlay RAM while a receiver or transmitter runs from it (P25, NXDN, M17: their code, state and
+// task stacks): until it releases it, no other overlay is loaded over it. The DMR engine may still call codecInit()
+// when it doesn't stand aside (p25_phy_active() false: the moments around a transmission's start and end); loading the
+// vocoder then pulled the RAM from under the running task. Refused loads are counted (overlay_refused, over the cable).
+void overlay_claim(int which);
+void overlay_release(int which);
+extern volatile uint32_t overlay_refused;
 // Copies it into the RAM again (after a test overwrote it: vocoder/py/ram_test.py); its state starts afresh
 void vocoder_load(void);
 

@@ -108,6 +108,9 @@ void p25_phy_tx_pad(void);        // zeros up to a whole block (after the last d
 uint32_t p25_phy_tx_room(void);
 int p25_phy_tx_begin(bool low_power);
 void p25_phy_tx_end(void);
+// the last transmit interrupt: its number n (block n being sent since some 2 ms; UINT32_MAX: none yet), when
+// (systime_get_us()), and whether block n + 1 (just written) has data (not an underrun's zeros)
+extern volatile uint32_t p25_phy_tx_isr_n, p25_phy_tx_isr_us, p25_phy_tx_isr_next;
 
 // The transmit log: event 0 begin / end (arg 0 before the set up, 1 the send enabled, 2 the end), 1 the transmit
 // interrupt (arg its number)
@@ -126,12 +129,15 @@ typedef struct {
 extern p25_phy_txlog_t p25_phy_txlog[P25_PHY_TXLOG];
 extern volatile uint32_t p25_phy_txlog_n;
 
-// The NXDN receiver (nxdn_radio.c): the modem in FM recording its AF input (8 kHz) all the time, the DMR handlers
-// standing aside; nxdn_fm_read(): the next half (256 samples) once the modem finished it (false: not yet)
-bool nxdn_fm_start(void);
-void nxdn_fm_stop(void);
-bool nxdn_fm_read(int16_t out[256]);
-extern volatile uint32_t nxdn_fm_rewrites;
+// The software receivers (afrx.c): the modem in FM recording its AF input (8 kHz) all the time, the DMR handlers
+// standing aside; afrec_read(): the next half (256 samples) once the modem finished it (false: not yet). bw: the
+// recording's FM_BANDWIDTH
+#define AFREC_BW_NXDN 0x1F // the de-emphasis on (undone in software), no band-pass
+#define AFREC_BW_FLAT 0x0F // neither (M17, DMR)
+bool afrec_start(uint32_t bw);
+void afrec_stop(void);
+bool afrec_read(int16_t out[256]);
+extern volatile uint32_t afrec_rewrites;
 
 // NXDN experiments: the FM receive recording (the AF input at 8 kHz) into p25_phy_buf (p25_phy.c)
 int nxdn_af_capture(int halves, uint32_t fm_bandwidth, int work_mode);
