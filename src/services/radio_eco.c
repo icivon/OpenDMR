@@ -117,7 +117,9 @@ void eco_tick(void)
     if (!rs.has_channel || (level == 0) || (rs.channel.libre_dmr_flag1 & ECO_FLAG1_NO_ECO) || rs.is_transmitting || rs.ptt_down ||
         rs.has_carrier || rs.speaker_open || rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp || rs.is_scanning || vox_running() || aprs_pending() || data_pending() ||
         hotspot_active() ||
-        (rs.dmr_running && dmr_has_sync()) || rs.nxdn_running || active) { // NXDN: the recording needs the receiver on (for now)
+        (rs.dmr_running && dmr_has_sync()) || rs.nxdn_running || rs.m17_running || rs.dmrs_running || active) {
+        // NXDN, DMR in software: the recording needs the receiver on (for now); M17: the modem finds a transmission at
+        // its preamble only
         eco_stop();
         return;
     }

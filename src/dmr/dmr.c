@@ -49,6 +49,7 @@
 #include "dmr.h"
 #include "p25_phy.h"
 #include "aprs_dmr.h"
+#include "dmr_soft.h"
 
 #define VECTOR_FIRST       32
 #define IRQ_SYSTEM         (61 - VECTOR_FIRST)
@@ -205,15 +206,41 @@ void dmr_modem_calibration(void)
     HRC7000SetDMRModemCalibration();
 }
 
-/* Transmitting (uiTxScreen.c): the engine transmits while trxTransmissionEnabled, from its timeslot interrupts */
+/* Transmitting (uiTxScreen.c): the engine transmits while trxTransmissionEnabled, from its timeslot interrupts. With
+   the software receiver running (dmr_soft.c) the PTT goes to it: it stops the recording, then has the engine transmit
+   (dmr_engine_transmit()) */
 
-void dmr_transmit(bool on)
+void dmr_engine_transmit(bool on)
 {
     HRC7000ClearIsWakingState();
     if (on && (settings.location_lat != SETTINGS_UNITIALISED_LOCATION_LAT)) {
         HRC7000SetTalkerAliasLocation(settings.location_lat, settings.location_lon);
     }
     trxTransmissionEnabled = on;
+}
+
+// the engine's receive state from scratch (it stood aside while the software receiver recorded)
+void dmr_engine_resume(void)
+{
+    CPU_SR_ALLOC();
+
+    CPU_CRITICAL_ENTER();
+    HRC7000InitDigital();
+    CPU_CRITICAL_EXIT();
+}
+
+bool dmr_engine_transmitting(void)
+{
+    return trxTransmissionEnabled || trxIsTransmitting;
+}
+
+void dmr_transmit(bool on)
+{
+    if (dmr_soft_running()) {
+        dmr_soft_ptt(on);
+    } else {
+        dmr_engine_transmit(on);
+    }
 }
 
 // The talk group or private call (tx_target.c): the engine sends it and filters the private calls with it
@@ -230,19 +257,56 @@ void dmr_set_own_id(uint32_t id)
 // The HR_C7000 found the timeslots of a signal (scan: HRC7000HasGotSync())
 bool dmr_has_sync(void)
 {
-    return HRC7000HasGotSync();
+    return dmr_soft_running() ? dmr_soft_has_sync() : HRC7000HasGotSync();
 }
 
 // The engine follows a call's timeslots (slotState): idle again some 0.7 s after it ends (measured). Not
 // HRC7000HasGotSync(): the timing found stays after the signal. A call of another colour code, filtered out, isn't seen
 bool dmr_channel_busy(void)
 {
-    return slotState != DMR_STATE_IDLE;
+    return dmr_soft_running() ? dmr_soft_busy() : (slotState != DMR_STATE_IDLE);
 }
 
 bool dmr_is_transmitting(void)
 {
-    return trxTransmissionEnabled || trxIsTransmitting;
+    return dmr_soft_transmitting() || dmr_engine_transmitting();
+}
+
+// HRC7000CheckTalkGroupFilter(): a call's destination (the TG, or PC_CALL_FLAG << 24 | the called ID) and its caller
+// taken or not, by the DMR filter settings
+bool dmr_tg_filter(uint32_t tg_or_pc, uint32_t source)
+{
+    if (((tg_or_pc >> 24) == PC_CALL_FLAG) && (settingsUsbMode != USB_MODE_HOTSPOT)) {
+        // private calls if allowed: all of them with no destination filter, else only those to this radio
+        if ((nonVolatileSettings.privateCalls != 0) || ((trxTalkGroupOrPcId >> 24) == PC_CALL_FLAG)) {
+            if ((nonVolatileSettings.dmrDestinationFilter == DMR_DESTINATION_FILTER_NONE) ||
+                (tg_or_pc == (trxDMRID | (PC_CALL_FLAG << 24)))) {
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
+    if (tg_or_pc == ALL_CALL_VALUE) { // all call bypasses filtering
+        return true;
+    }
+    switch (nonVolatileSettings.dmrDestinationFilter) {
+    case DMR_DESTINATION_FILTER_TG:
+        return (trxTalkGroupOrPcId & 0x00FFFFFF) == tg_or_pc;
+    case DMR_DESTINATION_FILTER_DC:
+        return codeplugContactsContainsPC(source);
+    case DMR_DESTINATION_FILTER_RXG:
+        for (int i = 0; i < currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup; i++) {
+            if (currentRxGroupData.NOT_IN_CODEPLUG_contactsTG[i] == tg_or_pc) {
+                return true;
+            }
+        }
+        // the talk group selected too, even if not in the RX group
+        return (trxTalkGroupOrPcId & 0x00FFFFFF) == tg_or_pc;
+    default:
+        break;
+    }
+    return true;
 }
 
 bool dmr_repeater_failed(void)
@@ -426,6 +490,70 @@ static const char *caller_text(uint32_t source)
     return text[0] ? text : NULL;
 }
 
+// An LC of the call (the engine's, or the software receiver's): a voice call's caller and destination to the last
+// heard list and the UI, a talker alias block, a GPS position
+static void take_lc(const volatile uint8_t *lc, uint8_t timeslot)
+{
+    if ((lc[0] == FLCO_GROUP) || (lc[0] == FLCO_PRIVATE)) {
+        uint32_t source = ((uint32_t)lc[6] << 16) | ((uint32_t)lc[7] << 8) | lc[8];
+        uint32_t destination = ((uint32_t)lc[3] << 16) | ((uint32_t)lc[4] << 8) | lc[5];
+        uint32_t tg_or_pc = ((uint32_t)lc[0] << 24) | destination;
+
+        if ((source != 0) && (destination != 0)) {
+            if (source != call.source) {
+                ta_clear();
+                call.has_location = false;
+            }
+            ta.caller = true;
+            call.source = source;
+            call.tg_or_pc = tg_or_pc;
+            call.timeslot = timeslot;
+            call_shown = true;
+            // shown: the engine's QSO timeout sets it back to the default screen at the end of the call (the
+            // main firmware's UI sets it when it draws the caller)
+            uiDataGlobal.displayQSOState = QSO_DISPLAY_CALLER_DATA;
+            qso_state = QSO_DISPLAY_CALLER_DATA;
+            last_heard_add(call.source, call.tg_or_pc, call.timeslot, caller_text(call.source));
+            post();
+        }
+    } else if (ta.caller && (lc[0] >= 4) && (lc[0] < (4 + TA_BLOCKS))) {
+        ta_block(lc);
+    } else if (call_shown && (lc[0] == FLCO_GPS) && (lc[1] == FID_STANDARD)) {
+        int32_t latitude_e5, longitude_e5;
+
+        if (gps_decode(lc, &latitude_e5, &longitude_e5)) {
+            call.has_location = true;
+            call.latitude_e5 = latitude_e5;
+            call.longitude_e5 = longitude_e5;
+            last_heard_set_location(call.source, latitude_e5, longitude_e5);
+            post();
+        }
+    }
+}
+
+// the software receiver's: an LC of the call shown again (every embedded LC) changes nothing
+void dmr_lc_heard(const uint8_t lc[9], uint8_t timeslot)
+{
+    if (call_shown && ((lc[0] == FLCO_GROUP) || (lc[0] == FLCO_PRIVATE))) {
+        uint32_t source = ((uint32_t)lc[6] << 16) | ((uint32_t)lc[7] << 8) | lc[8];
+        uint32_t tg_or_pc = ((uint32_t)lc[0] << 24) | ((uint32_t)lc[3] << 16) | ((uint32_t)lc[4] << 8) | lc[5];
+        if ((source == call.source) && (tg_or_pc == call.tg_or_pc) && (timeslot == call.timeslot)) {
+            return;
+        }
+    }
+    take_lc(lc, timeslot);
+}
+
+void dmr_call_over(void)
+{
+    if (call_shown || (uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA)) {
+        call_shown = false;
+        uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
+        qso_state = QSO_DISPLAY_DEFAULT_SCREEN;
+        post();
+    }
+}
+
 /* The receive beeps the engine asks for (applicationMain.c rxBeepsHandler()) */
 
 #define BEEP_RX_CARRIER      0x04 // settings.beep_options
@@ -483,39 +611,8 @@ void dmr_after_tick(void)
         updateLastHeard = false;
         if (HRC7000GetReceivedTgOrPcId() == 0) {
             // nothing
-        } else if ((lc[0] == FLCO_GROUP) || (lc[0] == FLCO_PRIVATE)) {
-            uint32_t source = ((uint32_t)lc[6] << 16) | ((uint32_t)lc[7] << 8) | lc[8];
-            uint32_t destination = ((uint32_t)lc[3] << 16) | ((uint32_t)lc[4] << 8) | lc[5];
-
-            if ((source != 0) && (destination != 0)) {
-                if (source != call.source) {
-                    ta_clear();
-                    call.has_location = false;
-                }
-                ta.caller = true;
-                call.source = source;
-                call.tg_or_pc = ((uint32_t)lc[0] << 24) | destination;
-                call.timeslot = (uint8_t)((dmrMonitorCapturedTS != -1) ? dmrMonitorCapturedTS : trxGetDMRTimeSlot());
-                call_shown = true;
-                // shown: the engine's QSO timeout sets it back to the default screen at the end of the call (the
-                // main firmware's UI sets it when it draws the caller)
-                uiDataGlobal.displayQSOState = QSO_DISPLAY_CALLER_DATA;
-                qso_state = QSO_DISPLAY_CALLER_DATA;
-                last_heard_add(call.source, call.tg_or_pc, call.timeslot, caller_text(call.source));
-                post();
-            }
-        } else if (ta.caller && (lc[0] >= 4) && (lc[0] < (4 + TA_BLOCKS))) {
-            ta_block(lc);
-        } else if (call_shown && (lc[0] == FLCO_GPS) && (lc[1] == FID_STANDARD)) {
-            int32_t latitude_e5, longitude_e5;
-
-            if (gps_decode(lc, &latitude_e5, &longitude_e5)) {
-                call.has_location = true;
-                call.latitude_e5 = latitude_e5;
-                call.longitude_e5 = longitude_e5;
-                last_heard_set_location(call.source, latitude_e5, longitude_e5);
-                post();
-            }
+        } else {
+            take_lc(lc, (uint8_t)((dmrMonitorCapturedTS != -1) ? dmrMonitorCapturedTS : trxGetDMRTimeSlot()));
         }
     }
     if (uiDataGlobal.displayQSOState != qso_state) {

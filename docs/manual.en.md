@@ -55,7 +55,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | # long | Reverse repeater (channel mode only) | Same |
 | * | Timeslot | Bandwidth 12.5 / 25 kHz |
 | * long | Back to the channel's own timeslot | — |
-| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN | Same |
+| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | Same |
 | ▶ / ◀ | Talk group + / − (through the RX group list) | Squelch + / − |
 | SK2 + ▶ / ◀ | Power + / − | Same |
 | SK2 + ▶ long | User power | Same |
@@ -133,7 +133,7 @@ changes.
 
 <img src="manual/en/channel-details.png" alt="Channel details 1"> <img src="manual/en/channel-details-2.png" alt="Channel details 2"> <img src="manual/en/channel-details-3.png" alt="Channel details 3"> <img src="manual/en/channel-details-4.png" alt="Channel details 4">
 
-Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel, the RAN on an NXDN channel), timeslot, TG list, contact, receive and transmit
+Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel, the RAN on an NXDN channel, the CAN on an M17 channel), timeslot, TG list, contact, receive and transmit
 CTCSS/DCS, bandwidth, step, transmit timeout, Rx only, zone skip, all skip, VOX, channel power, squelch, beep, eco,
 talker alias transmit on TS1 / TS2, APRS configuration.
 
@@ -159,7 +159,7 @@ and B): **hold the back key** to switch, or choose in the VFO menu.
 | Choose the receive / the transmit frequency | SK2 + ▲ / SK2 + ▼ |
 | Type a frequency | Digits (e.g. `43500000`: it is set after the 8th digit, or with the menu key; the back key deletes one) |
 | Swap Rx and Tx while held | SK1 + SK2 |
-| Mode: FM → AM → USB → LSB → DMR → P25 → NXDN | SK1 + * |
+| Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | SK1 + * |
 | Squelch (FM, AM, SSB) / talk group (DMR, P25, NXDN) | ▶ ◀ |
 
 Both frequencies are shown large: the receive one with `RX` (green) on its right, the transmit one with `TX` (red).
@@ -201,6 +201,19 @@ frequency comes the target transmitted to (a group or an individual call), with 
 - Receive: the radio records the discriminator and demodulates and decodes it in software; transmit: our own AMBE+2
   encoder, NXDN48's ±1050 Hz deviation. Tested with an MMDVM hotspot (0 % bit errors). Encrypted calls are not decoded.
 - CPS versions after 0.7.1 support NXDN channels (mode, RAN, NXDN ID).
+
+**M17** (4FSK, 12.5 kHz, simplex voice, Codec 2 3200): the bottom bar shows `M17` and `12.5K`; below the frequency
+comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
+
+- The **CAN** (channel access number, 0 - 15) is set in the channel details (on an M17 channel the colour code row
+  becomes the CAN). It is transmitted with each call; received calls are not filtered by CAN, all are played.
+- **Transmit**: always to ALL (broadcast), from the callsign under General in the CPS. A received call shows the
+  caller's callsign in large letters.
+- Receive: demodulated and decoded in software, as NXDN; transmit: our own Codec 2 3200 encoder, checked against the
+  reference libcodec2 (nearly the same frames).
+- **The voice quality is not yet what we want**: Codec 2 3200 itself sounds duller than the AMBE+2 of DMR and NXDN,
+  with less treble.
+- CPS 0.10.0 and later support M17 channels (mode, CAN).
 
 ### VFO quick menu (menu key)
 
@@ -675,4 +688,6 @@ firmware: see the README.
 - P25: simplex group calls in clear only; known issues in [docs/p25.md](p25.md), section 6.
 - NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
   ID to callsign database yet.
+- M17: simplex voice only (no packet data, no encryption), always to ALL; the voice is duller than DMR / NXDN (Codec 2
+  3200).
 - Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.

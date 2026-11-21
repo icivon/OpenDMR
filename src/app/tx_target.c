@@ -41,6 +41,7 @@
 #include "tx_target.h"
 #include "p25_radio.h"
 #include "nxdn_radio.h"
+#include "m17_radio.h"
 #include "nxdn_id.h"
 
 #define TS_MASK           0x03
@@ -151,6 +152,10 @@ void tx_target_apply(codeplug_channel_t *channel, tx_target_t *target)
             id = 1;
         }
         nxdn_radio_set_target(codeplug_nxdn_ran(channel), nxdn_id_get(), (uint16_t)id, pc);
+        return;
+    }
+    if (channel->mode == CODEPLUG_MODE_M17) {
+        m17_radio_set_can(codeplug_m17_can(channel)); // to ALL (m17_radio.h)
         return;
     }
     if (channel->mode != CODEPLUG_MODE_DMR) {

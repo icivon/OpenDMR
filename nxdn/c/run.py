@@ -21,7 +21,7 @@ def main():
     exe = os.path.join(DATA, 'test_core.exe')
     env = dict(os.environ, PATH=os.path.dirname(GCC) + os.pathsep + os.environ['PATH'])
     subprocess.run([GCC, '-O2'] + (['-DNXDN_DEBUG'] if os.environ.get('NXDN_DEBUG') else []) + [ '-Wall', '-Wextra', '-I', os.path.join(ROOT, 'src', 'services'), '-o', exe,
-                    os.path.join(HERE, 'test_core.c'), os.path.join(ROOT, 'src', 'services', 'nxdn_core.c'), '-lm'],
+                    os.path.join(HERE, 'test_core.c'), os.path.join(ROOT, "src", "services", "nxdn_core.c"), os.path.join(ROOT, "src", "services", "fsk4.c"), '-lm'],
                    check=True, env=env)
     names = args or sorted(os.path.basename(p)[:-7] for p in glob.glob(os.path.join(DATA, 'stab_*.af.npy')))
     raws = []

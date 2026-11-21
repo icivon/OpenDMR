@@ -49,6 +49,16 @@ Suggestions are welcome in the [issues](https://github.com/va3bpf/OpenDMR/issues
 - A better demodulator (about 1.4 % voice frame bit errors over the air: an equaliser)
 - Tests with commercial NXDN radios
 
+**M17** (simplex voice receive and transmit done in 0.7.0)
+
+- Voice quality: Codec 2 3200 sounds duller than AMBE+2; looking for improvements
+- Tests with an MMDVM hotspot; M17 calls in Last heard
+
+**DMR in software** (simplex receive and transmit moved to software in 0.7.0: fewer bit errors on weak signals)
+
+- Repeater mode transmit in software, talker alias / GPS when transmitting, APRS data, hotspot mode
+- In the end, no more need for the HR_C7000's DMR engine
+
 ## Being considered (needs much time and test equipment)
 
 - NXDN96, NXDN trunking and encryption

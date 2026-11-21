@@ -775,7 +775,7 @@ void p25_radio_start(void)
     // overlay RAM), then the decoder into it
     p25_phy_rx_start(block_isr);
     vTaskDelay(pdMS_TO_TICKS(5));
-    overlay_use(OVERLAY_P25);
+    overlay_claim(OVERLAY_P25);
     p25_rx_init(&rx, P25_NAC_ANY);
     imbe_dec_init(&dec);
     pcm_in = pcm_out = 0;
@@ -799,6 +799,7 @@ void p25_radio_stop(void)
         vTaskDelay(1);
     }
     p25_phy_rx_stop();
+    overlay_release(OVERLAY_P25);
     call.active = false;
     call_publish();
     audio(false);

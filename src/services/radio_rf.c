@@ -38,6 +38,8 @@
 #include "leds.h"
 #include "fd6818.h"
 #include "modem.h"
+#include "systime.h"
+#include "p25_phy.h"
 #include "factory_cal.h"
 #include "dmr.h"
 #include "hr_c7000.h"
@@ -55,6 +57,7 @@
 #define RF_ON            0x02
 #define RF_OFF           0x04
 #define RF_RX            0x08 // the end of the transmission
+#define RF_GATE          0x10 // the physical layer transmit's bursts (DMR in software): switched by its timing
 
 static StaticTask_t rf_task_tcb;
 static StackType_t rf_task_stack[256];
@@ -87,19 +90,36 @@ static void rf_ramp_step(uint8_t level)
 }
 
 // 0x2b440: the LNA off, a wait by band (stock: 1.6 / 1.0 / 1.2 ms picked from a channel field, not mapped yet; here VHF /
-// 220 MHz / UHF), the Tx frequency, the PA switch, the ramp up. The wait counts from the Tx interrupt, which comes
-// RF_CONTROL byte 1 bits ahead of the burst (modem.c RF_CONTROL_DIRECT, 0x1F: 3.2 ms): 1.6 ms puts the PA at full 0.87 ms
-// before the timeslot. With the old direct mode lead (0x0A) no wait was early enough (2026-11-10). Measured with a weak
-// signal (bit errors in the received bursts): VHF 1600 none; UHF 1600 left the first symbol of most bursts wrong, 1200
-// (the PA full 1.25 ms ahead) none. 220 MHz not measured.
+// 220 MHz / UHF), the Tx frequency, the PA switch, the ramp up. The wait counts from the Tx interrupt.
+// Direct mode (Rx == Tx), measured 2026-11-20 with the software receiver against known content at -116 dBm, UHF: the
+// burst's data starts some 1.1 ms after the Tx interrupt, the PA at full 0.77 ms after it with no wait (the FD6818 to
+// the Tx frequency ~0.55 ms, the ramp ~0.2 ms). With 1200 the first 8 bits of each burst were 46 % wrong (the first
+// AMBE frame bad 46 %), 400 4 - 7 %, none 0.4 - 2.7 % (as the rest of the burst). So no wait in direct mode, all bands
+// (an earlier PA only puts the carrier up sooner). Repeater mode keeps the stock waits (not measured: no repeater).
 // Not const: tuned over the cable (dm32dbg.py mwb rf_on_waits ...)
 uint16_t rf_on_waits[3] = {1600, 1000, 1200};
+uint16_t rf_on_waits_direct[3] = {0, 0, 0};
+
+static void rf_on_wait(uint32_t wait);
+static void rf_pa_up(void);
 
 static void rf_on(void)
 {
+    int band = radio_band_of(rs.channel.tx_freq);
+    rf_on_wait((rs.channel.rx_freq == rs.channel.tx_freq) ? rf_on_waits_direct[band] : rf_on_waits[band]);
+}
+
+static void rf_on_wait(uint32_t wait)
+{
     lna(false, 0);
-    rf_wait(rf_on_waits[radio_band_of(rs.channel.tx_freq)]);
+    rf_wait(wait);
     fd6818_dmr_burst_tx(rs.channel.tx_freq);
+    rf_pa_up();
+}
+
+// the PA switch, the ramp up
+static void rf_pa_up(void)
+{
     gpio_output((rs.channel.tx_freq >= UHF_FROM) ? PIN_PA_UHF : PIN_PA_VHF, true);
     for (int i = 0; i < (int)sizeof(pa_ramp); i++) {
         rf_ramp_step(pa_ramp[i]);
@@ -109,6 +129,8 @@ static void rf_on(void)
     hrc7000TraceRf(5);
 }
 
+static void rf_off_now(void);
+
 // 0x2b4a0: 1.6 ms more (the interrupt comes before the end of the burst), the ramp down, the PA switch off, the Rx
 // frequency, the LNA on
 static void rf_off(void)
@@ -117,6 +139,14 @@ static void rf_off(void)
         return;
     }
     rf_wait(1600);
+    rf_off_now();
+}
+
+static void rf_off_now(void)
+{
+    if (!rf_on_air) {
+        return;
+    }
     for (int i = PA_RAMP_DOWN; i > 0; i--) {
         rf_ramp_step(pa_ramp[i]);
     }
@@ -130,6 +160,86 @@ static void rf_off(void)
     fd6818_dmr_burst_rx(rs.channel.rx_freq);
     lna(true, rs.channel.rx_freq);
     rf_wait(50);
+}
+
+/* The physical layer transmit's bursts (DMR in software, dmr_soft.c): its blocks are the 30 ms timeslots, even ones
+   bursts (their 132 symbols from symbol 6 on), odd ones empty. The transmit interrupt can't wake this task (p25_phy.c),
+   so the task follows its time stamps: after an empty block's interrupt the PA on for the next burst (if that block
+   has data), after a burst's interrupt the PA off once the burst is out. The interrupts don't come 30 ms apart: measured
+   (2026-11-20, a software receiver against known content, the first and the last 8 bits of the bursts) the burst's
+   data starts ~28.2 ms after the empty block's interrupt and ends ~28.3 ms after its own (on at +27.5 left 12 % of the
+   first 8 bits wrong, off at +28.0 20 % of the last 8). The FD6818 to the Tx frequency 4 ms ahead of the PA (it needs
+   that long to settle: the first AMBE frame of the burst right 47 % tuned just before the PA, 72 % 1.5 ms ahead, ~90 %
+   4 ms ahead, as the other two), the PA on at +26.9 ms (its ramp ~1.3 ms before the first symbol: the mask of
+   10.2.3.1.1 allows 1.5 ms; at full 0.2 ms later); off at +28.7 ms, ~0.4 ms after the last symbol. The task sleeps
+   until each time, busy waiting only its last ~1.2 ms (wait_until()). */
+volatile uint32_t rf_gate_off_us = 28700, rf_gate_on_us = 26900; // tuned over the cable
+volatile uint32_t rf_gate_tune_us = 4000; // the FD6818 to the Tx frequency this much before the PA (0: just before it)
+static void rf_ask(uint32_t what);
+static volatile bool gate_on;
+static bool wait_until(uint32_t at);
+
+// Until systime_get_us() reaches at: asleep while more than a tick and a bit is left, the rest busy (at most ~1.2 ms).
+// The RF task is the highest: busy waiting through the 4 ms of the FD6818's settling and 2 ms before each switch took
+// so much of the CPU, with the AMBE encoder, that the UI task lost its events (a PTT release, 2026-11-20).
+// false: the gating stopped meanwhile
+static bool wait_until(uint32_t at)
+{
+    while ((int32_t)(at - systime_get_us()) > 1200) {
+        if (!gate_on) {
+            return false;
+        }
+        vTaskDelay(1);
+    }
+    while ((int32_t)(at - systime_get_us()) > 0) {
+    }
+    return true;
+}
+
+static void rf_gate(void)
+{
+    uint32_t done = UINT32_MAX;
+    while (gate_on && p25_phy_tx_active()) {
+        uint32_t n = p25_phy_tx_isr_n, t = p25_phy_tx_isr_us, next = p25_phy_tx_isr_next;
+        if ((n != p25_phy_tx_isr_n) || (n == UINT32_MAX) || (n == done)) {
+            vTaskDelay(1);
+            continue;
+        }
+        bool burst = !(n & 1);
+        if (!burst && !next) { // no burst follows
+            done = n;
+            continue;
+        }
+        uint32_t lead = burst ? 0 : rf_gate_tune_us;
+        uint32_t at = t + (burst ? rf_gate_off_us : rf_gate_on_us) - lead;
+        if (!wait_until(at)) {
+            break;
+        }
+        if (burst) {
+            rf_off_now();
+        } else if (lead) {
+            lna(false, 0);
+            fd6818_dmr_burst_tx(rs.channel.tx_freq);
+            if (!wait_until(at + lead)) { // stopped before the PA: the FD6818 back to receive
+                fd6818_dmr_burst_rx(rs.channel.rx_freq);
+                lna(true, rs.channel.rx_freq);
+                break;
+            }
+            rf_pa_up();
+        } else {
+            rf_on_wait(0);
+        }
+        done = n;
+    }
+}
+
+// on: the physical layer transmit just started (its first block a burst, the PA on); off: as before (the PA as it is)
+void radio_phy_tx_gate(bool on)
+{
+    gate_on = on;
+    if (on) {
+        rf_ask(RF_GATE);
+    }
 }
 
 static void rf_task_main(void *arg)
@@ -159,6 +269,9 @@ static void rf_task_main(void *arg)
         }
         if (asked & (RF_SETUP | RF_ON)) {
             rf_on();
+        }
+        if (asked & RF_GATE) {
+            rf_gate();
         }
     }
 }

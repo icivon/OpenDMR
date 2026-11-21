@@ -46,6 +46,8 @@ void radio_dmr_rx_on(void);
 // The physical layer transmit (p25_phy.c: P25, NXDN): the transmitter on (low_power: 50 mW, else the channel's power)
 // and kept on, or back to receiving
 void radio_phy_tx(bool on, bool low_power);
+// the physical layer transmit's DMR bursts (dmr_soft.c): the PA on in the bursts' timeslots only (radio_rf.c)
+void radio_phy_tx_gate(bool on);
 
 // A beep (sound.c): the audio switch to the baseband first, then the amplifier; off the other way round, each
 // switched while the amplifier is off (a click otherwise, mostly while transmitting)

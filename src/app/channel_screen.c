@@ -793,6 +793,7 @@ static void draw(void)
     dmr_call_t call;
     p25_call_t p25;
     nxdn_call_t nxdn;
+    m17_call_t m17;
 
     if ((channel.mode == CODEPLUG_MODE_DMR) && dmr_call(&call)) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
@@ -807,6 +808,11 @@ static void draw(void)
     if ((channel.mode == CODEPLUG_MODE_NXDN) && nxdn_radio_call(&nxdn) && (nxdn.src != 0)) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
         qso_panel_draw_nxdn(&nxdn, name, power_text());
+        return;
+    }
+    if ((channel.mode == CODEPLUG_MODE_M17) && m17_radio_call(&m17) && m17.src[0]) {
+        format_names(zone_text, sizeof(zone_text), name, sizeof(name));
+        qso_panel_draw_m17(&m17, name, power_text());
         return;
     }
     meter.active = true;
@@ -883,6 +889,14 @@ static void draw(void)
         }
         bottom.mode = "NXDN";
         bottom.item2 = "6.25K";
+    } else if (channel.mode == CODEPLUG_MODE_M17) {
+        // M17: to ALL (m17_radio.h), the CAN on its line
+        snprintf(cc_text, sizeof(cc_text), "CAN %u", (unsigned)codeplug_m17_can(&channel));
+        panel.line_icon = ICONS_TALKGROUP;
+        panel.line_text = text(TEXT_ALL);
+        panel.line_right = cc_text;
+        bottom.mode = "M17";
+        bottom.item2 = "12.5K";
     } else {
         uint16_t tone = (channel.rx_tone != CODEPLUG_CSS_NONE) ? channel.rx_tone : channel.tx_tone;
 

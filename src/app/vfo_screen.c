@@ -945,6 +945,7 @@ static void draw(void)
     dmr_call_t call;
     p25_call_t p25;
     nxdn_call_t nxdn;
+    m17_call_t m17;
 
     if ((v->mode == CODEPLUG_MODE_DMR) && !digit_entry_active(&entry) && dmr_call(&call)) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
@@ -959,6 +960,11 @@ static void draw(void)
     if ((v->mode == CODEPLUG_MODE_NXDN) && !digit_entry_active(&entry) && nxdn_radio_call(&nxdn) && (nxdn.src != 0)) {
         snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
         qso_panel_draw_nxdn(&nxdn, buffer, power_text(v));
+        return;
+    }
+    if ((v->mode == CODEPLUG_MODE_M17) && !digit_entry_active(&entry) && m17_radio_call(&m17) && m17.src[0]) {
+        snprintf(buffer, sizeof(buffer), "VFO %c", (vfo_screen_current() == 0) ? 'A' : 'B');
+        qso_panel_draw_m17(&m17, buffer, power_text(v));
         return;
     }
     draw_status_bar(v);
@@ -1017,6 +1023,13 @@ static void draw(void)
             draw_text(VALUE_X, TONE_Y, target.name, &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
         }
         codeplug_text_nac(codeplug_p25_nac(v), buffer, sizeof(buffer));
+        draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
+                  THEME_COLOUR_TEXT_LABEL);
+    } else if (v->mode == CODEPLUG_MODE_M17) {
+        // M17: to ALL (m17_radio.h), the CAN on its line, right
+        icons_draw(WIDGET_MARGIN, TONE_Y + 3, ICONS_TALKGROUP, THEME_COLOUR_TEXT_LABEL);
+        draw_text(VALUE_X, TONE_Y, text(TEXT_ALL), &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        snprintf(buffer, sizeof(buffer), "CAN %u", (unsigned)codeplug_m17_can(v));
         draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
                   THEME_COLOUR_TEXT_LABEL);
     } else {

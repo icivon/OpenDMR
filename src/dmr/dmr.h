@@ -71,4 +71,13 @@ typedef struct {
 
 bool dmr_call(dmr_call_t *call); // a call is shown (the caller known); false: none
 
+// The DMR filter settings for a call to tg_or_pc (the TG, or PC_CALL_FLAG << 24 | the called ID) from source
+bool dmr_tg_filter(uint32_t tg_or_pc, uint32_t source);
+// The software receiver (dmr_soft.c): the engine transmits for it; the calls it receives shown as the engine's
+void dmr_engine_resume(void); // its receive state from scratch, before it transmits
+void dmr_engine_transmit(bool on);
+bool dmr_engine_transmitting(void);
+void dmr_lc_heard(const uint8_t lc[9], uint8_t timeslot); // a Full LC heard (9 bytes) on timeslot 0 / 1
+void dmr_call_over(void);                                 // the call heard ended
+
 #endif
