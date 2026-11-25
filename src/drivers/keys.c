@@ -136,8 +136,14 @@ uint32_t keys_read_keypad(void)
                 if (((column == 2) && (buttons & KEYS_BUTTON_SK1)) || ((column == 3) && (buttons & KEYS_BUTTON_SK2))) {
                     continue;
                 }
-                if (((row * COLUMNS) + column < KEYS_COUNT) && column_down(column)) {
-                    result |= (1UL << ((row * COLUMNS) + column));
+                int index = (row * COLUMNS) + column;
+
+                if ((index < KEYS_COUNT) && column_down(column)) {
+#ifdef BOARD_KEY_INDEX
+                    result |= (1UL << BOARD_KEY_INDEX(index));
+#else
+                    result |= (1UL << index);
+#endif
                 }
             }
             gpio_set(PIN_KEYPAD_ROW0 + row);

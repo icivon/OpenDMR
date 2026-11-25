@@ -19,6 +19,35 @@
 #define BOARD_DM36_H
 
 #include "board_dm32.h"
+#include "keys.h"
+
+/* ---------------- keypad wiring (measured on real hardware, 2026-11-25) ----------------
+ * The DM-36 matrix is wired differently: the physical keys sit at other row/column
+ * positions than on the DM-32. Translate each measured position to the logical key
+ * bit (keys.h / ui.h). Positions not listed keep the DM-32 mapping.
+ *
+ *   matrix          physical key     logical key
+ *     0  (r0c0)     *                KEYS_STAR       (15)
+ *     4  (r1c0)     0                KEYS_0          (14)
+ *    12  (r3c0)     Menu             KEYS_GREEN      (0)   menu / OK
+ *    13  (r3c1)     Up               KEYS_FRONT_UP   (16)
+ *    14  (r3c2)     Down             KEYS_FRONT_DOWN (17)
+ *    15  (r3c3)     Back             KEYS_RED        (12)
+ */
+#undef  BOARD_KEY_INDEX
+#define BOARD_KEY_INDEX(index) dm36_key_index(index)
+static inline int dm36_key_index(int index)
+{
+    switch (index) {
+    case 0:  return KEYS_STAR;
+    case 4:  return KEYS_0;
+    case 12: return KEYS_GREEN;
+    case 13: return KEYS_FRONT_UP;
+    case 14: return KEYS_FRONT_DOWN;
+    case 15: return KEYS_RED;
+    default: return index;
+    }
+}
 
 /* ---------------- model identity ---------------- */
 #undef  BOARD_NAME

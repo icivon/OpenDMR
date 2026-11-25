@@ -56,6 +56,8 @@
 #define BOARD_KEY_ROWS        5
 #define BOARD_KEY_COLUMNS     4
 #define BOARD_ROWS_AS_GPIO    0xFE00UL // IO_DIPLEX2: LCD_DB0 - DB4 as GPIOs
+// Matrix position -> logical key bit (keys.h). The DM-32 wiring is the identity mapping.
+#define BOARD_KEY_INDEX(index) (index)
 
 /* ---------------- rotary / LEDs (drivers/rotary.c, leds.c) ---------------- */
 #define BOARD_PIN_ROTARY_A    0x27
