@@ -35,6 +35,7 @@
  */
 
 #include <stdio.h>
+#include "board.h"
 #include "widgets.h"
 #include "settings.h"
 #include "sound.h"
@@ -406,6 +407,13 @@ static bool handle(const ui_event_t *ev)
         return changed;
     }
     if ((ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_KEY_REPEAT)) {
+#if defined(BOARD_DM36)
+        // No LEFT / RIGHT keys on the DM-36: * and # change the value of the selected menu item.
+        // Only here: in every other screen * and # keep their own functions (lock, DTMF, digits ...).
+        if ((ev->key == UI_KEY_STAR) || (ev->key == UI_KEY_HASH)) {
+            return change_value(&l->items[*selected], ((ev->key == UI_KEY_HASH) ? 1 : -1), ev->modifiers);
+        }
+#endif
         if ((ev->key == UI_KEY_LEFT) || (ev->key == UI_KEY_RIGHT)) {
             return change_value(&l->items[*selected], ((ev->key == UI_KEY_RIGHT) ? 1 : -1), ev->modifiers);
         }
