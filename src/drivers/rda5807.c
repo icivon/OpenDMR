@@ -38,8 +38,8 @@
 #include "hal.h"
 #include "rda5807.h"
 
-#define PIN_SDIO       0x19
-#define PIN_SCLK       0x1A
+#define PIN_SDIO       BOARD_PIN_FM_SDIO
+#define PIN_SCLK       BOARD_PIN_FM_SCLK
 #define ADDRESS_RANDOM 0x11
 #define HALF_BIT_US    5
 

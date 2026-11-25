@@ -39,6 +39,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "board.h"
 #include "codeplug.h"
 #include "radio.h"
 #include "radio_hooks.h"
@@ -46,15 +47,15 @@
 
 #define SAMPLE_MS 25 // the task's pass
 
-#define PIN_LNA_VHF   0x22 // R5_V_SW
-#define PIN_LNA_UHF   0x24 // R5_U_SW
-#define PIN_PA_VHF    0x37
-#define PIN_PA_UHF    0x23
-#define PIN_AUDIO_SW  0x2F // the audio switch ("PWM/FD6818"): high in FM, the speaker straight from the FD6818 (stock)
-#define PIN_AUDIO_AMP 0x35
+#define PIN_LNA_VHF   BOARD_PIN_LNA_VHF // R5_V_SW
+#define PIN_LNA_UHF   BOARD_PIN_LNA_UHF // R5_U_SW
+#define PIN_PA_VHF    BOARD_PIN_PA_VHF
+#define PIN_PA_UHF    BOARD_PIN_PA_UHF
+#define PIN_AUDIO_SW  BOARD_PIN_AUDIO_SW // the audio switch ("PWM/FD6818"): high in FM, the speaker straight from the FD6818 (stock)
+#define PIN_AUDIO_AMP BOARD_PIN_AUDIO_AMP
 
-#define UHF_FROM  28000000 // 10 Hz: the UHF band of the radio (RADIO_HARDWARE_FREQUENCY_BANDS)
-#define B220_FROM 20000000
+#define UHF_FROM  BOARD_UHF_FROM // 10 Hz: the UHF band of the radio (RADIO_HARDWARE_FREQUENCY_BANDS)
+#define B220_FROM BOARD_B220_FROM
 
 #define FLAG4_VOX     0x40
 #define FLAG4_RX_ONLY 0x04

@@ -41,13 +41,13 @@
 #include "keys.h"
 #include "cable_link.h"
 
-#define PIN_KEY_1          49 // columns
-#define PIN_KEY_3          51
-#define PIN_KEY_4          52
-#define PIN_PTT            43
-#define ROWS               5
-#define COLUMNS            4
-#define ROWS_AS_GPIO       0xFE00 // IO_DIPLEX2: LCD_DB0 - DB4 (and DB5 / DB6 bits of the same field) as GPIOs
+#define PIN_KEY_1          BOARD_PIN_KEY_1 // columns
+#define PIN_KEY_3          BOARD_PIN_KEY_3
+#define PIN_KEY_4          BOARD_PIN_KEY_4
+#define PIN_PTT            BOARD_PIN_PTT
+#define ROWS               BOARD_KEY_ROWS
+#define COLUMNS            BOARD_KEY_COLUMNS
+#define ROWS_AS_GPIO       BOARD_ROWS_AS_GPIO // IO_DIPLEX2: LCD_DB0 - DB4 as GPIOs
 #define PTT_STABLE_SAMPLES 16     // x 100 us: a UART byte is low for at most 9 bits (78 us at 115200 baud)
 
 static void settle(void)

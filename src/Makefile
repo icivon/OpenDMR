@@ -17,6 +17,17 @@ SIZE    := $(CROSS)size
 BUILD   := build
 TARGET  := $(BUILD)/opendmr
 
+# Board selection: "make BOARD=dm36" (or BOARD=36) builds the DM-36 map from
+# src/board/. The default stays DM-32UV; shared sources keep their DM-32 values.
+BOARD   ?= dm32
+ifeq ($(BOARD),36)
+override BOARD := dm36
+endif
+ifeq ($(BOARD),dm36)
+TARGET       := $(BUILD)/opendmr_dm36
+BOARD_CFLAGS := -DBOARD_DM36
+endif
+
 CPU     := -mcpu=ck803s
 # Our AMBE+2 vocoder lives in the research tree (vocoder/c/ambe) and is built from there
 VOCODER := ../vocoder/c/ambe
@@ -24,8 +35,8 @@ VOCODER := ../vocoder/c/ambe
 P25CORE := ../p25/c
 P25_SRCS := $(P25CORE)/p25/p25_fec.c $(P25CORE)/p25/p25_frame.c $(P25CORE)/imbe/imbe_frame.c \
             $(P25CORE)/imbe/imbe_parms.c $(P25CORE)/imbe/imbe_dec.c $(P25CORE)/imbe/imbe_tables.c             $(P25CORE)/imbe/imbe_enc.c $(P25CORE)/imbe/imbe_ana.c $(P25CORE)/imbe/imbe_ana_tables.c
-INCDIRS := $(VOCODER) $(P25CORE)/p25 $(P25CORE)/imbe config hal drivers dmr graphics graphics/fonts ui ui/text ui/widgets services app freertos/include freertos/portable/CK803
-CFLAGS  := $(CPU) $(addprefix -I,$(INCDIRS)) -O2 -Wall -ffunction-sections -fdata-sections -MMD -MP
+INCDIRS := board $(VOCODER) $(P25CORE)/p25 $(P25CORE)/imbe config hal drivers dmr graphics graphics/fonts ui ui/text ui/widgets services app freertos/include freertos/portable/CK803
+CFLAGS  := $(CPU) $(BOARD_CFLAGS) $(addprefix -I,$(INCDIRS)) -O2 -Wall -ffunction-sections -fdata-sections -MMD -MP
 # Debug: every received AMBE frame to the data flash (services/rx_capture.h, read with tools/debug/rx_capture.py):
 # make clean && make RX_CAPTURE=1. Off by default (9 KB of RAM, writes below the window)
 ifeq ($(RX_CAPTURE),1)
@@ -47,6 +58,9 @@ LIBS    := -lm -lc -lgcc
 # Layers, see docs/architecture.md
 SRCDIRS := startup freertos freertos/portable/CK803 hal drivers dmr graphics graphics/fonts graphics/themes ui ui/text ui/widgets services app
 C_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.c))
+ifeq ($(BOARD),dm36)
+C_SRCS  := $(filter-out services/gps.c,$(C_SRCS)) board/gps_stub.c
+endif
 S_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.S))
 OBJS    := $(addprefix $(BUILD)/,$(C_SRCS:.c=.o) $(S_SRCS:.S=.o))            $(patsubst $(VOCODER)/%.c,$(BUILD)/vocoder/%.o,$(wildcard $(VOCODER)/*.c)) \
            $(patsubst $(P25CORE)/%.c,$(BUILD)/p25/%.o,$(P25_SRCS))

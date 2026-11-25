@@ -36,6 +36,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "board.h"
 
 #define BITSET(n) (0x01UL << (n))
 #define BITCLR(n) (~(0x01UL << (n)))
@@ -111,16 +112,16 @@
 #define I8080_TIMING REG(0x12000000 + 0x10)
 #define I8080_CTRL   REG(0x12000000 + 0x28)
 
-// Pins
-#define PIN_LCD_BKLIGHT 0x0F
-#define PIN_PWR_SWCHECK 0x10
-#define PIN_PWR_SW      0x11 // held high: the radio stays on
-#define PIN_SPI0_CS     0x12
-#define PIN_KEY_BKLIGHT 0x28
-#define PIN_MIC_MUT     0x2E
-#define PIN_LCD_NRESET  0x42
-#define PIN_LCD_RD      0x46
-#define PIN_KEYPAD_ROW0 71
-#define PIN_KEYPAD_ROW4 75
+// Pins, from the board map (src/board/)
+#define PIN_LCD_BKLIGHT BOARD_PIN_LCD_BKLIGHT
+#define PIN_PWR_SWCHECK BOARD_PIN_PWR_SWCHECK
+#define PIN_PWR_SW      BOARD_PIN_PWR_SW
+#define PIN_SPI0_CS     BOARD_PIN_SPI0_CS
+#define PIN_KEY_BKLIGHT BOARD_PIN_KEY_BKLIGHT
+#define PIN_MIC_MUT     BOARD_PIN_MIC_MUT
+#define PIN_LCD_NRESET  BOARD_PIN_LCD_NRESET
+#define PIN_LCD_RD      BOARD_PIN_LCD_RD
+#define PIN_KEYPAD_ROW0 BOARD_PIN_KEYPAD_ROW0
+#define PIN_KEYPAD_ROW4 BOARD_PIN_KEYPAD_ROW4
 
 #endif

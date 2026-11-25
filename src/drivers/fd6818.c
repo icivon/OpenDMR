@@ -42,11 +42,11 @@
 #include "tones.h"
 #include "fd6818.h"
 
-#define PIN_SCL 0x07
-#define PIN_SDA 0x08
-#define PIN_SCN 0x18
-#define PIN_GP0 0x3B
-#define PIN_GP1 0x3A
+#define PIN_SCL BOARD_PIN_FD6818_SCL
+#define PIN_SDA BOARD_PIN_FD6818_SDA
+#define PIN_SCN BOARD_PIN_FD6818_SCN
+#define PIN_GP0 BOARD_PIN_FD6818_GP0
+#define PIN_GP1 BOARD_PIN_FD6818_GP1
 
 #define REG_AF        0x47 // 0x6142: receive audio out, 0x6042: muted
 #define REG_VOLUME    0x48

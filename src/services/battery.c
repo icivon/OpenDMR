@@ -42,12 +42,12 @@
 #include "hal.h"
 #include "battery.h"
 
-#define ADC_PER_VOLT_X100 82 // ADC counts per 0.1 V on the DM-32, x 10 (8.2)
+#define ADC_PER_VOLT_X100 BOARD_ADC_PER_VOLT_X100 // ADC counts per 0.1 V, x 10 (8.2)
 #define AVERAGE_SAMPLES   1000
 #define SETTLE_MS         1500
-#define FULL_X10          82 // 8.2 V
-#define EMPTY_X10         64 // 6.4 V: the warning threshold (upper hysteresis of the main firmware)
-#define LOW_X10           62
+#define FULL_X10          BOARD_BATTERY_FULL_X10 // 8.2 V
+#define EMPTY_X10         BOARD_BATTERY_EMPTY_X10 // 6.4 V: the warning threshold (upper hysteresis of the main firmware)
+#define LOW_X10           BOARD_BATTERY_LOW_X10
 
 static volatile int32_t average_x10_x1000 = 0; // the average x 1000: no float in the interrupt, no truncation
 

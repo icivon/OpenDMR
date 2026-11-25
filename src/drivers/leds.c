@@ -35,8 +35,8 @@
 #include "leds.h"
 #include "settings.h"
 
-#define PIN_LED_GREEN 32
-#define PIN_LED_RED   33
+#define PIN_LED_GREEN BOARD_PIN_LED_GREEN
+#define PIN_LED_RED   BOARD_PIN_LED_RED
 
 void leds_init(void)
 {

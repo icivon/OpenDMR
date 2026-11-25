@@ -33,6 +33,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "board.h"
 #include "widgets.h"
 #include "draw.h"
 #include "fonts.h"
@@ -84,7 +85,7 @@ static void draw(void)
     list_view_draw_row(2, &row);
 
     row.name = text(TEXT_UI_MODEL);
-    row.value = "DM-32UV";
+    row.value = BOARD_NAME;
     list_view_draw_row(3, &row);
 
     draw_text(WIDGET_MARGIN, y, text(TEXT_CREDITS), font, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);

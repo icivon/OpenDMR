@@ -35,8 +35,8 @@
 #include "hal.h"
 #include "rotary.h"
 
-#define PIN_ROTARY_A 0x27
-#define PIN_ROTARY_B 0x26
+#define PIN_ROTARY_A BOARD_PIN_ROTARY_A
+#define PIN_ROTARY_B BOARD_PIN_ROTARY_B
 
 static volatile int32_t count = 0;
 static bool last_b = false;

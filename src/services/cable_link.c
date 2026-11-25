@@ -73,7 +73,7 @@
 #define CPS_ACCESS_LANGUAGES  10       // raw addresses of the language slots and the font files (language.h, font_cjk.h)
 #define CPS_RAW_SECTOR        0x800000 // 'X' 1: a sector number with this bit is a raw sector of that area
 #define CPS_RAW_CRC           0x80000000 // 'D' 'K': an address with this bit is a raw one of that area
-#define CPS_RADIO_TYPE_DM32   11 // what the OpenDM32 releases report
+#define CPS_RADIO_TYPE_DM32   BOARD_CPS_RADIO_TYPE // what the OpenDM32 releases report
 #define CPS_WRITE_PREPARE     1  // 'X': a sector into the buffer
 #define CPS_WRITE_DATA        2  // 'X': bytes into it
 #define CPS_WRITE_SECTOR      3  // 'X': the buffer to the flash

@@ -64,25 +64,25 @@ void RAM_CODE gpio_reset(uint32_t pin)
 // Pin mux and directions as GPIO_Init(); the power switch is held on, the RF switches off
 void pins_init(void)
 {
-    IO_DIPLEX0 = 0xFFFDFD80;
-    IO_DIPLEX1 = 0xFFFFFE07;
-    IO_DIPLEX2 = 0x0FC80100;
+    IO_DIPLEX0 = BOARD_IO_DIPLEX0;
+    IO_DIPLEX1 = BOARD_IO_DIPLEX1;
+    IO_DIPLEX2 = BOARD_IO_DIPLEX2;
 
-    GPIOA_DDR = 0x070604E0;
-    GPIOB_DDR = 0x00A0D01F;
-    GPIOC_DDR = 0x00007FC4;
+    GPIOA_DDR = BOARD_GPIOA_DDR;
+    GPIOB_DDR = BOARD_GPIOB_DDR;
+    GPIOC_DDR = BOARD_GPIOC_DDR;
 
-    GPIOA_DR |= 0x0060;
-    GPIOC_DR |= 0x7044;
-    GPIOB_DR = 0x0000C005;
+    GPIOA_DR |= BOARD_GPIOA_DR_SET;
+    GPIOC_DR |= BOARD_GPIOC_DR_SET;
+    GPIOB_DR = BOARD_GPIOB_DR_SET;
 
-    IOMGR_REN_REG0 = 0xFFFBFFEF;
-    IOMGR_REN_REG1 = 0x00FFFFFF;
-    IOMGR_REN_REG2 = 0x0FFFFF70;
+    IOMGR_REN_REG0 = BOARD_IOMGR_REN0;
+    IOMGR_REN_REG1 = BOARD_IOMGR_REN1;
+    IOMGR_REN_REG2 = BOARD_IOMGR_REN2;
     // As the end of GPIO_Init(): pad 24 without its pull resistor, pads of REG2 bits 26 and 27 with theirs
-    IO_DIPLEX1 |= 0x38000000;
-    IOMGR_REN_REG0 &= ~BITSET(24);
-    IOMGR_REN_REG2 |= 0x0C000000;
+    IO_DIPLEX1 |= BOARD_IO_DIPLEX1_EXTRA;
+    IOMGR_REN_REG0 &= ~BITSET(BOARD_REN0_CLEAR_BIT);
+    IOMGR_REN_REG2 |= BOARD_REN2_EXTRA;
 
     gpio_output(PIN_MIC_MUT, true);
     for (uint32_t pin = PIN_KEYPAD_ROW0; pin <= PIN_KEYPAD_ROW4; pin++) {
@@ -90,10 +90,12 @@ void pins_init(void)
     }
     gpio_input(PIN_PWR_SWCHECK);
     gpio_output(PIN_PWR_SW, true);
-    gpio_output(0x2C, true); // GPS off (low = on): gps_set_enabled()
+#if BOARD_HAS_GPS
+    gpio_output(BOARD_PIN_GPS_POWER, true); // GPS off (low = on): gps_set_enabled()
+#endif
     gpio_output(PIN_SPI0_CS, true);
-    gpio_output(0x22, false); // R5_V_SW, LNA VHF
-    gpio_output(0x24, false); // R5_U_SW, LNA UHF
-    gpio_output(0x37, false); // PA_SEL_VHF
-    gpio_output(0x23, false); // PA_SEL_UHF
+    gpio_output(BOARD_PIN_LNA_VHF, false);
+    gpio_output(BOARD_PIN_LNA_UHF, false);
+    gpio_output(BOARD_PIN_PA_VHF, false);
+    gpio_output(BOARD_PIN_PA_UHF, false);
 }

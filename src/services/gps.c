@@ -56,7 +56,7 @@
 #include "ui.h"
 #include "gps.h"
 
-#define PIN_GPS_POWER     0x2C // SEL_GPS_Pin, low = on
+#define PIN_GPS_POWER     BOARD_PIN_GPS_POWER // SEL_GPS_Pin, low = on
 #define GPS_BAUD          9600
 #define GPS_TASK_PRIORITY 1
 
