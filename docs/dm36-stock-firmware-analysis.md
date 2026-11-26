@@ -285,3 +285,59 @@ py tools\debug\dm36_keyscan.py ptt
 三种情况的修复都只改 `src/board/board_dm36.h`（DM36 专属板级文件）或
 `src/board/dm36/` 下的独立文件，共享 `keys.c`/`input.c`/`keymap.c` 保持上游原样，
 与本项目"DM36 独立、DM32 零改动、上游冲突最小"的约定一致。
+
+---
+
+## 9. 离线闭环结果（2026-11-26）
+
+本节记录"不需要人工测试即可从原厂 Flash/反汇编确定"的结果，以及明确不能靠静态证据改动的项目。
+
+### 9.1 镜像头与程序 Flash 起点
+
+- 原厂 `dm36-program-20261125-1933.bin` 整个 1 MB 中**不存在** `BFUV32` 魔数；文件开头是向量/引导代码 `74 68 64 0c 00 10 00 03 ...`。
+- 应用区从文件 `0xC000`（VMA `0x0300C000`）开始，入口字为 `2c 11 01 c0`；OpenDMR 的 `ckcpu.ld`、`fw_update.py`、`dm32_dump.py` 已经全部使用 `0xC000` / `0x0300C000`，**无需修改**。
+- `BFUV32-V2` 是 OpenDMR/OpenDM32 的发行包装头，不是 DM36 原厂头。`tools/debug/fw_update.py` 会自动剥掉 256 字节头；DM36 构建继续生成 `_BFUV32.bin` 是安全的发行约定，**无需改成原厂裸头**。
+
+### 9.2 CPS 机型码
+
+原厂 CPS 处理函数在 `0x3029200` 附近，按访问类型分支。访问类型 `9` 返回 8 字节内存范围描述符：
+
+```text
+VMA 0x30b1068: 00 30 6e 00 ff ff ff 00
+```
+
+它不是 OpenDMR `cable_link.c` 里的 `CPS_ACCESS_RADIO_INFO` 结构（OpenDMR 的 radio info 是 `struct_version/radio_type/git_revision/build_date_time/flash_id/features`）。因此：
+
+- 原厂固件中没有找到可直接映射为 `BOARD_CPS_RADIO_TYPE` 的数值。
+- 继续沿用 `board_dm32.h` 的 `11` 作为占位；`board_dm36.h` 中的覆盖仍保持注释状态。
+- 这一项不能靠固件分析闭环，不能猜改。
+
+### 9.3 已从原厂固件确认并落地的板级值
+
+- 按键矩阵：行 `71..75`、列 `49..52`、`IO_DIPLEX2 |= 0xFE00`、5×4；已经显式写入 `src/board/board_dm36.h`。
+- LED/PTT：`0x3001600` 附近初始化 pin 32/33（LED）和 pin 43/41，其中 pin 43 与既有 `BOARD_PIN_PTT=43` 一致；当前继承值不需要改。
+- 原厂没有发现与 DM32 不同的电池 ADC 系数、旋钮脚、键盘背光脚或软 SPI 脚的可信常量；这些仍保持 DM32 值，不猜改。
+
+### 9.4 LytLink 蓝牙链路闭环
+
+已按原厂 AT 协议把控制面与写频链路补齐：
+
+- `AT+VER?` 响应解析并缓存到 `bluetooth_version()`。
+- `AT+MICGAIN=15` / `AT+SPKGAIN=25` 纳入初始化。
+- `+DATA:00,<n>` / `+ADATA:01,<n>` 改为"头部 + 长度 + 二进制载荷"状态机，避免载荷中的 `\r` / `\n` 被当作行结束。
+- 收到的 CPS 请求通过 `cable_link_inject()` 进入原有 CPS 请求缓冲，由 `cable_link_task()` 统一处理。
+- CPS 回复通过 `BOARD_CPS_REPLY_OUT` 镜像到 UART2；DM32 默认钩子为空，构建行为不变。
+
+代码位置：`src/board/dm36/bluetooth.c/.h`、`src/services/cable_link.c/.h`、`src/board/board.h`、`src/board/board_dm36.h`。
+
+### 9.5 仍不能靠固件分析闭环的项
+
+以下项缺少原厂反汇编证据或本来就需要实机响应，保持不猜改：
+
+- 完整 `IO_DIPLEX0/1/2`、GPIO DDR/DR、IOMGR_REN 初值。
+- FD6818 软 SPI 脚 `SCL/SDA/SCN/GP0/GP1` 的最终确认。
+- PA/LNA/MIC/AUDIO_SW/AUDIO_AMP 的最终 GPIO 确认。
+- 电池 ADC 系数、旋钮 A/B、键盘背光的 DM36 专属值。
+- 蓝牙模块电源/复位脚：原厂 `0x30619ec` 附近出现立即数 `175<<1` 和 `48`，但原厂 GPIO API 编码与 OpenDMR pin 编号不同，不能静态映射到 `board_dm36.h`。
+- CPS 机型码：见 9.2。
+

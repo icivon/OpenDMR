@@ -37,6 +37,7 @@
 #include "hal.h"
 #include "bluetooth.h"
 #include "uart2_dm36.h"
+#include "cable_link.h"
 
 #define BT_UART_BAUD      115200
 #define BT_RX_LINE        128
@@ -48,31 +49,75 @@ static TaskHandle_t task;
 static volatile bool link_up;
 static char line[BT_RX_LINE];
 static uint16_t line_len;
+static char module_version[32];
+static uint8_t cps_data[CABLE_LINK_BUFFER_SIZE];
+static uint16_t cps_data_len;
+static uint16_t cps_data_remaining;
 
 static void send(const char *s)
 {
     uart2_write((const uint8_t *)s, (uint32_t)strlen(s));
 }
 
-// Parse one complete response line from the module
-static void parse_line(const char *s)
+static uint32_t parse_decimal(const char *s)
+{
+    uint32_t value = 0;
+
+    while ((*s >= '0') && (*s <= '9')) {
+        value = (value * 10) + (uint32_t)(*s - '0');
+        s++;
+    }
+    return value;
+}
+
+// Parse one complete response line from the module; returns the byte count of a following data frame.
+static uint32_t parse_line(const char *s)
 {
     if (!strncmp(s, "CONN", 4)) {
         link_up = true;
     } else if (!strncmp(s, "DISC", 4)) {
         link_up = false;
+    } else if (!strncmp(s, "VER:", 4)) {
+        strncpy(module_version, s + 4, sizeof(module_version) - 1);
+        module_version[sizeof(module_version) - 1] = '\0';
+    } else if (!strncmp(s, "+DATA:00,", 9)) {
+        return parse_decimal(s + 9);
+    } else if (!strncmp(s, "+ADATA:01,", 10)) {
+        return parse_decimal(s + 10);
     }
-    // VER:/LENAME:/PIN:/SCAN:/+DATA:/+ADATA: are left to the menu / CPS layers; the link state and the audio
-    // path are all this service needs before those layers are attached.
+    return 0;
 }
 
 static void rx(uint8_t c)
 {
+    if (cps_data_remaining != 0) {
+        if (cps_data_len < sizeof(cps_data)) {
+            cps_data[cps_data_len++] = c;
+            cps_data_remaining--;
+        } else {
+            cps_data_remaining = 0;
+            cps_data_len = 0;
+        }
+        if (cps_data_remaining == 0) {
+            if (cps_data_len != 0) {
+                cable_link_inject(cps_data, cps_data_len);
+                cps_data_len = 0;
+            }
+        }
+        return;
+    }
+
     if ((c == '\n') || (c == '\r')) {
         if (line_len != 0) {
+            uint32_t length;
+
             line[line_len] = '\0';
-            parse_line(line);
+            length = parse_line(line);
             line_len = 0;
+            if (length != 0) {
+                cps_data_len = 0;
+                cps_data_remaining = (uint16_t)((length < sizeof(cps_data)) ? length : sizeof(cps_data));
+            }
         }
         return;
     }
@@ -91,6 +136,8 @@ static void bt_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(200));
     send("AT+VER?\r\n");
     send("AT+AUTOCONN?\r\n");
+    send("AT+MICGAIN=15\r\n");
+    send("AT+SPKGAIN=25\r\n");
 
     for (;;) {
         while (uart2_read(&c)) {
@@ -113,6 +160,11 @@ void bluetooth_start(void)
 bool bluetooth_connected(void)
 {
     return link_up;
+}
+
+const char *bluetooth_version(void)
+{
+    return module_version;
 }
 
 void bluetooth_audio(bool on)

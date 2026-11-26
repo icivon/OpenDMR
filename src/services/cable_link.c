@@ -144,6 +144,33 @@ static void RAM_CODE rx_byte(uint8_t c)
     }
 }
 
+void cable_link_inject(const uint8_t *data, uint32_t length)
+{
+    if ((data == NULL) || handling) {
+        return;
+    }
+
+    taskENTER_CRITICAL();
+    for (uint32_t i = 0; (i < length) && (request_length < CABLE_LINK_BUFFER_SIZE); i++) {
+        request[request_length++] = data[i];
+    }
+    last_byte_ms = systime_get_ms();
+    last_byte_tick = xTaskGetTickCount();
+    taskEXIT_CRITICAL();
+
+    if (task_handle) {
+        xTaskNotifyGive(task_handle);
+    }
+}
+
+static void cps_reply(const uint8_t *data, uint32_t length, bool from_monitor)
+{
+    uart0_write(data, length);
+    if (!from_monitor) {
+        BOARD_CPS_REPLY_OUT(data, length);
+    }
+}
+
 // No byte for ms milliseconds, by either clock: one of them may have stopped
 static bool silent_for(uint32_t ms)
 {
@@ -582,8 +609,7 @@ void cable_link_handle_pending(bool from_monitor)
             break;
     }
 
-    uart0_write((const uint8_t *)reply, reply_length);
-    (void)from_monitor;
+    cps_reply((const uint8_t *)reply, reply_length, from_monitor);
     used_ms = systime_get_ms();
     used = true;
     if (speed_asked) {

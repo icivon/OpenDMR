@@ -20,6 +20,7 @@
 #define BOARD_DM36_H
 
 #include "board_dm32.h"
+#include "dm36/bluetooth.h"
 #include "keys.h"
 
 /* ---------------- keypad wiring (measured on real hardware, 2026-11-25) ----------------
@@ -50,6 +51,19 @@ static inline int dm36_key_index(int index)
     }
 }
 
+/* Stock 0x3011cc8/0x301243c: rows 71-75 are driven as GPIO by IO_DIPLEX2
+ * bit[15:9] (0xFE00) and columns are GPIOB_EXT bit[20:17] (pins 49-52). */
+#undef  BOARD_PIN_KEYPAD_ROW0
+#define BOARD_PIN_KEYPAD_ROW0 71
+#undef  BOARD_PIN_KEYPAD_ROW4
+#define BOARD_PIN_KEYPAD_ROW4 75
+#undef  BOARD_KEY_ROWS
+#define BOARD_KEY_ROWS        5
+#undef  BOARD_KEY_COLUMNS
+#define BOARD_KEY_COLUMNS     4
+#undef  BOARD_ROWS_AS_GPIO
+#define BOARD_ROWS_AS_GPIO    0xFE00UL
+
 /* ---------------- model identity ---------------- */
 #undef  BOARD_NAME
 #define BOARD_NAME            "DM-36"
@@ -67,13 +81,18 @@ static inline int dm36_key_index(int index)
 #define BOARD_BEEP_PATH_AF_OUT(on, carrier) fd6818_af_out(!(on) && (carrier))
 #define BOARD_AMP_START_MS      120
 
+/* CPS replies are mirrored to the LytLink UART2 link once it is up. */
+#undef  BOARD_CPS_REPLY_OUT
+#define BOARD_CPS_REPLY_OUT(data, length) \
+    do { if (bluetooth_connected()) bluetooth_write_data((data), (length)); } while (0)
+
 /*
  * TODO(DM36) - measured values go here. Each group was identified by static
  * analysis as DM-32-specific; any of them can differ on the DM-36.
  *
- *   Keypad    BOARD_PIN_KEY_1/3/4, BOARD_PIN_PTT, BOARD_KEY_ROWS/COLUMNS,
- *             BOARD_ROWS_AS_GPIO, BOARD_PIN_KEYPAD_ROW0/4
- *             -> read GPIO_EXT while holding PTT / SK1 / SK2 (dm32dbg.py mr).
+ *   Keypad    BOARD_PIN_KEY_1/3/4, BOARD_PIN_PTT
+ *             -> rows/columns/mask were recovered from the stock scanner above;
+ *                the side-button GPIO assignment is still handled separately.
  *
  *   Mux       BOARD_IO_DIPLEX0/1/2, BOARD_GPIO?_DDR/DR, BOARD_IOMGR_REN?
  *             -> copied verbatim from the DM-32 stock GPIO_Init(); recheck if

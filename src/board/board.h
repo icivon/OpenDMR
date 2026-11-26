@@ -24,5 +24,8 @@
 #ifndef BOARD_AMP_START_MS
 #define BOARD_AMP_START_MS 75
 #endif
+#ifndef BOARD_CPS_REPLY_OUT
+#define BOARD_CPS_REPLY_OUT(data, length) ((void)0)
+#endif
 
 #endif

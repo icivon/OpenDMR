@@ -41,6 +41,9 @@ void cable_link_init(void);
 // Handles the request received if it is complete; fromMonitor: called by the 1 ms interrupt while the tasks are stalled
 void cable_link_handle_pending(bool from_monitor);
 
+// Inject a complete request from a non-UART0 source (DM-36 LytLink CPS). Task context only.
+void cable_link_inject(const uint8_t *data, uint32_t length);
+
 // A request came in the last second: its bytes on the cable can read as the PTT of the jack
 bool cable_link_is_busy(void);
 

@@ -13,6 +13,7 @@
 
 void bluetooth_start(void);          // UART2 and the module, DM-36 only
 bool bluetooth_connected(void);      // HFP/SCO link up: route the speaker and mic to Bluetooth
+const char *bluetooth_version(void); // cached response to AT+VER?
 void bluetooth_audio(bool on);       // enable/disable the module's audio (AT+AUDIO/MICEN/SPKEN)
 void bluetooth_write_data(const uint8_t *data, uint32_t length); // CPS bytes to the module (AT+DATA)
 

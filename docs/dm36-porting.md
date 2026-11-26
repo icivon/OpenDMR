@@ -910,3 +910,18 @@ NM = os.environ.get('CSKY_NM', 'csky-elf-noneabiv2-nm')
 这样 `fkey.py` 等依赖 `dm32dbg.NM` 的脚本可以直接使用 PATH 中的 `csky-elf-noneabiv2-nm`。
 
 使用 `tools/release/make_release.py` 时，让 `csky-elf-noneabiv2-*` 和 `make` 都在 PATH 中即可。
+
+### 10.9 离线闭环结果（2026-11-26）
+
+本轮把"不需要人工测试"的项目继续推进并归档，完整证据见 `docs/dm36-stock-firmware-analysis.md` 第 9 节：
+
+| 项 | 结果 |
+|---|---|
+| 程序 Flash 起点 / `BFUV32-V2` | 原厂程序从 `0xC000` / `0x0300C000` 开始；原厂 bin 无 `BFUV32` 魔数，OpenDMR 继续沿用发行包装头，代码不改 |
+| CPS 机型码 | 原厂访问类型 9 是内存范围描述符，不是 OpenDMR radio info；没有找到机型码常量，保持继承值 11，不猜改 |
+| 键盘扫描参数 | 原厂矩阵行/列/mux 已确认并显式回填 `board_dm36.h`：`71..75`、`49..52`、`0xFE00`、5×4 |
+| LED / PTT | 原厂初始化 pin 32/33 与 43，和现有宏一致，不需要改 |
+| LytLink 控制面/写频链 | `+DATA:` / `+ADATA:` 二进制帧、版本缓存、增益命令、CPS 请求注入与回复镜像已补齐 |
+| 不能静态解决项 | 完整 mux/DDR、软 SPI 脚、PA/LNA/音频 GPIO、电池系数、旋钮/背光、蓝牙电源脚、CPS 机型码；均不猜改，保留实机确认 |
+
+代码层已通过 DM36 完整编译；DM32 构建保持默认钩子为空，行为不变。
