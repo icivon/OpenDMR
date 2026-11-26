@@ -198,7 +198,7 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
 | FD6818 软 SPI dump | 未采集 | `fdr 0x00` 应读到 `0x4829`；否则查 `SCL=0x07/SDA=0x08/SCN=0x18` 与 mux |
 | FM/DMR 收发 | 待定性 | 刷入含原厂表的固件，另一台电台定性收发；失败先对 `docs/dm36-stock-fd6818-writes.md` 核寄存器 |
 | PA/LNA/音频开关脚 | 未最终确认 | `mr` 读 GPIO 变化；当前沿用 DM32 宏 |
-| SK1/SK2 短/长按无反应 | 未解决 | 查 `keys.c`/`input.c`/`keymap.c`，用 `fkey.py sk1` 分层定位 |
+| SK1/SK2 短/长按无反应 | 根因已定位，待实机确认引脚 | 见第 8 节：原厂按键扫描证据 + `dm36_keyscan.py` 实测 |
 | PTT 有界面无 RF | 未解决 | 先确认 FD6818B 表已生效，再查 `radio_tx.c` PA 脚与 `fd6818_transmit()` |
 | 蓝牙音频/写频端到端 | 基础链路已建 | 见 4.4 三项；抓 UART2 与确认音频开关 GPIO |
 | 按键音破音 | 已修，待实机 | 刷固件确认；仍破音则查 `0x2E/0x2F` 与功放启动时间 |
@@ -215,3 +215,73 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
 | `src/board/dm36/fd6818_dm36.c` | 已应用的 DM36 专属寄存器表（独立驱动） |
 | `src/board/dm36/bluetooth.c` | 已实现的 LytLink AT 命令框架 |
 | `src/board/dm36/uart2_dm36.c/.h` | DM36 专属 UART2 蓝牙链路驱动 |
+| `tools/debug/dm36_keyscan.py` | SK1/SK2/PTT 按键分层诊断（固件位 + 原始 GPIO） |
+
+---
+
+## 8. SK1 / SK2 无反应：原厂按键扫描证据与定位方法
+
+### 8.1 原厂固件事实（反汇编，VMA 已按 0x03000000 校准）
+
+固件里**只有一个按键检测器** `0x30124c4`，没有独立的"侧键直读"路径。它的流程：
+
+1. `bsr 0x3011cc8`：**读取任何列之前**，先把行准备好——
+   `movi r3,136; lsli r3,21` → `0x11000000` 的 `+0x3c`（`IO_DIPLEX2`），
+   `ori r2,65024`（`0xFE00`）置位，把 LCD_DB0–DB4 切成 GPIO；
+   `movih r3,5137`（`0x1401` 高半字 = GPIOC 块），`andni r2,3968` 清 dr；
+   随后 `0x301c0f4(pin,0)` 对 pin **71,72,73,74,75** 逐行拉低。
+2. `movi r0,50; bsr 0x2e1bc`：延时，等列电平稳定。
+3. `bsr 0x301243c`：`ld.w r0,(r3,0x50)` 读 GPIOB_EXT，`zext r0,r0,20,17`
+   取 **bit[20:17] = pin 49–52**（4 条列）；`cmpnei r0,15` 判断是否按键。
+4. 逐行扫 `0x3012448(row)`（跳转表支持 8 个行脚 71–78），按键计数索引
+   键码表 `0x3084778`，得到功能键码交给 `0x3012530` 起的 UI 处理。
+5. 键盘任务 `0x30124c4` 只被 `0x3012544` 调用一次：所有按键都走这条路径。
+
+结论：**DM36 的按键是在"先拉低行、再读列"的矩阵回路里识别的**，不存在
+DM32 那种"侧键空闲态直接把列拉到地、单独读列"的路径。
+
+### 8.2 OpenDMR 的差异（根因）
+
+`src/drivers/keys.c`：
+
+- `keys_read_buttons()` 在**行空闲**态直接读 `PIN_KEY_3`/`PIN_KEY_4`（= 51/52）
+  判断 `KEYS_BUTTON_SK1/SK2`。这是 DM32 的接法（侧键把列直连到地）。
+- `keys_read_keypad()` 才会设置 `IO_DIPLEX2 |= ROWS_AS_GPIO` 并拉低行扫描矩阵。
+
+DM36 的侧键没有"直连列到地"的回路，`keys_read_buttons()` 读到的列一直是高，
+于是 `input.c:read_keys()` 的 mask 里永远没有 `UI_KEY_SK1/SK2` 位——没有
+PRESS/LONG/RELEASE 事件，`keymap.c` 里 SK1 短按（FM 收音机）/长按（锁定）自然
+无从触发。UI 与输入任务本身是好的：`fkey.py sk1` 直接注入事件有反应即证明这点。
+
+历史证据：`297b1d5` 只实测并映射了 6 个矩阵位置（0/4/12/13/14/15），
+提交说明明确"其它未测位置保留 DM32 映射，不一次性猜测 18 项"；
+`docs/dm36-porting.md` 第 6 节清单里 "SK1/SK2 实际 GPIO（DM32=51/52）"
+至今未勾选。**这两个键从来没有实测过。**
+
+### 8.3 定位步骤（一次实机，区分三种情况）
+
+用新工具 `tools/debug/dm36_keyscan.py`（电台在线、开机）：
+
+```powershell
+py tools\debug\dm36_keyscan.py sk1   # 提示松开->回车，按住 SK1->回车
+py tools\debug\dm36_keyscan.py sk2
+py tools\debug\dm36_keyscan.py ptt
+```
+
+它同时给出固件 `keys_read_buttons()` 的位、调用 `keys_read_keypad()` 的矩阵位、
+以及三个 GPIO_EXT 口的原始电平变化，判定：
+
+1. 固件位出现 SK1/SK2 变化但 UI 无动作 ⇒ 故障在 `input.c`/`keymap.c`/UI 绑定；
+2. 原始 GPIO 有变化、固件位没有 ⇒ 引脚号不对，把实测 pin 填进
+   `board_dm36.h` 的 `BOARD_PIN_KEY_3/4`（独立文件，DM32 不受影响）；
+3. 原始 GPIO 也没有变化 ⇒ 侧键需要"拉低行"才形成回路，是矩阵里的位置；
+   记录按住时哪一行 / 哪一列被拉低，把该 (row,col) 加进 `BOARD_KEY_INDEX`，
+   或把它映射成 `KEYS_BUTTON_SK1/SK2`。
+
+工具编译校验：`py -m py_compile tools\debug\dm36_keyscan.py` 通过。
+
+### 8.4 修复落地原则
+
+三种情况的修复都只改 `src/board/board_dm36.h`（DM36 专属板级文件）或
+`src/board/dm36/` 下的独立文件，共享 `keys.c`/`input.c`/`keymap.c` 保持上游原样，
+与本项目"DM36 独立、DM32 零改动、上游冲突最小"的约定一致。
