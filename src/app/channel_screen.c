@@ -460,9 +460,6 @@ static void enter(void *arg)
     int current = (settings_valid() && (settings.current_zone >= 0)) ? settings.current_zone : 0;
 
     (void)arg;
-    if (dual_watch_show()) {
-        return; // dual watch on: it is shown over this screen
-    }
     green_down = false;
     red_down = false;
     direct_channel = 0;
@@ -474,6 +471,7 @@ static void enter(void *arg)
         select_zone(current);
     }
     load(); // the channel may have been written (channel details, VFO --> channel) or the zone changed (zone list)
+    (void)dual_watch_show(); // dual watch on: shown over this screen, its selected path this channel
 }
 
 static void leave(void)
@@ -489,6 +487,63 @@ static void channel_changed(int new_position)
     }
     reversed = false;
     load();
+}
+
+// The position of a channel number in the zone; -1: not in it
+static int position_of(int number)
+{
+    if (zone.index < 0) { // all channels: the channels in use before it
+        int at = 0;
+
+        if (!codeplug_channel_in_use(number)) {
+            return -1;
+        }
+        for (int n = CODEPLUG_CHANNELS_MIN; n < number; n++) {
+            at += codeplug_channel_in_use(n) ? 1 : 0;
+        }
+        return at;
+    }
+    for (int at = 0; at < zone.channel_count; at++) {
+        if (zone.channels[at] == number) {
+            return at;
+        }
+    }
+    return -1;
+}
+
+bool channel_screen_select(int number)
+{
+    int at;
+
+    if ((number < CODEPLUG_CHANNELS_MIN) || !codeplug_channel_in_use(number)) {
+        return false;
+    }
+    // In the zone shown (or the settings' one, the screen not shown yet), else in all channels. The last used channel
+    // of the zone is written by load(): the screen's enter, which may read the zone again, finds it there
+    at = position_of(number);
+    if ((at < 0) && (settings.current_zone >= 0)) {
+        select_zone(settings.current_zone);
+        at = position_of(number);
+    }
+    if (at < 0) {
+        select_zone(codeplug_zone_count() - 1);
+        at = position_of(number);
+    }
+    if (at < 0) {
+        return false;
+    }
+    settings.current_zone = (int16_t)zone_number; // the screen's enter keeps this zone
+    settings_changed();
+    position = at;
+    reversed = false;
+    direct_channel = 0;
+    load();
+    return true;
+}
+
+int channel_screen_typed(void)
+{
+    return direct_channel;
 }
 
 static void zone_step(int step)

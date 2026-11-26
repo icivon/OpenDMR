@@ -387,6 +387,17 @@ static bool ts_ok(int ts)
     return !(nonVolatileSettings.dmrCcTsFilter & DMR_TS_FILTER_PATTERN) || (ts == trxGetDMRTimeSlot());
 }
 
+// A RAS system computes the LC CRC with a secret, so it fails the standard check on purpose. The "DMR crc" option
+// (inverted: Off = ignore) must work here too, not only in the HR_C7000 engine (hrc7000CrcIsValid()). The FEC still
+// runs: only this last CRC check is skipped.
+static bool lc_crc_ok(uint8_t lc[12], uint32_t mask)
+{
+    if ((settingsUsbMode != USB_MODE_HOTSPOT) && settingsIsOptionBitSet(BIT_DMR_CRC_IGNORED)) {
+        return true;
+    }
+    return dmr_full_lc_check(lc, mask);
+}
+
 static void log_burst(const dmr_burst_t *b, int ts)
 {
     if (dmr_soft_burst_log_hold) {
@@ -451,12 +462,12 @@ static void on_burst(void *ctx, const dmr_burst_t *b)
             (dt == DMR_DT_RATE_1)) {
             data_burst(ts, dt, b);
         } else if ((dt == DMR_DT_VOICE_LC_HEADER) && dmr_bptc196(b->bits, lc) &&
-                   dmr_full_lc_check(lc, DMR_MASK_VOICE_LC_HEADER)) {
+                   lc_crc_ok(lc, DMR_MASK_VOICE_LC_HEADER)) {
             dmr_soft_stats.headers++;
             p25_ev_log(42, (uint16_t)ts); // the delay log (p25_radio.c): a voice LC header received
             call_lc(ts, lc);
         } else if ((dt == DMR_DT_TERMINATOR_LC) && dmr_bptc196(b->bits, lc) &&
-                   dmr_full_lc_check(lc, DMR_MASK_TERMINATOR_LC)) {
+                   lc_crc_ok(lc, DMR_MASK_TERMINATOR_LC)) {
             dmr_soft_stats.terminators++;
             if (s->active) {
                 call_end(ts);

@@ -107,7 +107,7 @@ void sound_tx_tones_changed(void);             // sound_tx_tones changed: sound_
 void sound_tx_tones_save(void);                // when changed
 
 void sound_start(void);
-void sound_play(const int16_t *melody); // replaces what plays; NULL stops; key beeps not in the no key beep mode
+void sound_play(const int16_t *melody); // replaces what plays; NULL stops; none silent, no key beeps in no key beep
 void sound_play_volume(const int16_t *melody, uint8_t volume_divider); // at that volume
 void sound_play_dtmf(uint16_t low, uint16_t high); // the DTMF pair, heard while sending it (sound_play(NULL) stops)
 void sound_play_boot(void); // the boot melody, with the boot screen option

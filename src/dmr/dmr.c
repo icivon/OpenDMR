@@ -355,7 +355,10 @@ void dmr_data_cancel(void)
 bool dmr_aprs_send_position(int32_t latitude_e7, int32_t longitude_e7, uint16_t speed_knots, uint16_t course,
                             uint32_t destination, uint32_t source)
 {
-    aprs_dmr_tx_t tx;
+    // Off the stack: 34 bursts (477 B) overflowed the radio task's 1 KB when the APRS beacon sent one, its handle
+    // below the stack overwritten, the next wake of the task a misaligned access: the radio restarted, sent the auto
+    // beacon again at once, and so on. Only the radio task (and the test link) build positions.
+    static aprs_dmr_tx_t tx;
 
     return aprs_dmr_build_position(latitude_e7, longitude_e7, speed_knots, course, destination, source, &tx) &&
            dmr_data_send(&tx);

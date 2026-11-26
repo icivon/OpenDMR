@@ -156,64 +156,50 @@ static const ui_custom_t dmr_beep = {
     .change = dmr_beep_change,
 };
 
-/* Receive beep: none, carrier, talker, both */
+// The receive beeps in one row (#165: the talker beep's start was a row of its own, N/A unless the talker beep was
+// on): none, carrier, talker (at its end), talker at its start too, carrier and talker, all. The settings bits as
+// before: the receive beep (none, carrier, talker, both) and BEEP_RX_TALKER_BEGIN.
+#define RX_BEEPS 6
+
+static const uint8_t rx_beep_bits[RX_BEEPS] = {
+    0,                                           // none
+    (1 << BEEP_RX_SHIFT),                        // carrier
+    (2 << BEEP_RX_SHIFT),                        // talker, at its end
+    (2 << BEEP_RX_SHIFT) | BEEP_RX_TALKER_BEGIN, // talker, at its start too
+    (3 << BEEP_RX_SHIFT),                        // carrier and talker
+    (3 << BEEP_RX_SHIFT) | BEEP_RX_TALKER_BEGIN, // all
+};
 
 static int rx_beep(void)
 {
-    return (settings.beep_options & BEEP_RX_MASK) >> BEEP_RX_SHIFT;
+    int beep = (settings.beep_options & BEEP_RX_MASK) >> BEEP_RX_SHIFT;
+    bool begin = (beep >= 2) && (settings.beep_options & BEEP_RX_TALKER_BEGIN);
+
+    return (beep < 2) ? beep : (((beep - 2) * 2) + 2 + (begin ? 1 : 0));
 }
 
 static void rx_beep_format(char *buffer, size_t size)
 {
-    static const text_id_t beeps[BEEP_CHOICES] = {TEXT_NONE, TEXT_CARRIER, TEXT_TALKER, TEXT_BOTH};
+    static const text_id_t beeps[RX_BEEPS] = {TEXT_NONE, TEXT_CARRIER, TEXT_TALKER, TEXT_TALKER_BOTH_ENDS, TEXT_BOTH,
+                                              TEXT_ALL};
 
     format_text(silent() ? TEXT_N_A : beeps[rx_beep()], buffer, size);
 }
 
-// The talker begin bit is kept as it is (the main firmware did the same)
 static void rx_beep_change(int direction, uint8_t modifiers)
 {
-    int value = CLAMP(rx_beep() + direction, 0, BEEP_CHOICES - 1);
+    int value = CLAMP(rx_beep() + direction, 0, RX_BEEPS - 1);
 
     (void)modifiers;
     if (!silent()) {
-        settings.beep_options = (uint8_t)((settings.beep_options & ~BEEP_RX_MASK) | (value << BEEP_RX_SHIFT));
+        settings.beep_options = (uint8_t)((settings.beep_options & ~(BEEP_RX_MASK | BEEP_RX_TALKER_BEGIN)) |
+                                          rx_beep_bits[value]);
     }
 }
 
 static const ui_custom_t rx_beep_item = {
     .format = rx_beep_format,
     .change = rx_beep_change,
-};
-
-/* Talker beep: at the end only, or at the beginning too; only with the talker receive beep */
-
-static bool talker_beep_available(void)
-{
-    return !silent() && ((settings.beep_options & BEEP_RX_TALKER) != 0);
-}
-
-static void talker_beep_format(char *buffer, size_t size)
-{
-    if (!talker_beep_available()) {
-        format_text(TEXT_N_A, buffer, size);
-    } else {
-        format_text((settings.beep_options & BEEP_RX_TALKER_BEGIN) ? TEXT_BOTH : TEXT_END_ONLY, buffer, size);
-    }
-}
-
-static void talker_beep_change(int direction, uint8_t modifiers)
-{
-    (void)modifiers;
-    if (talker_beep_available()) {
-        settings.beep_options = (direction > 0) ? (settings.beep_options | BEEP_RX_TALKER_BEGIN)
-                                                : (settings.beep_options & ~BEEP_RX_TALKER_BEGIN);
-    }
-}
-
-static const ui_custom_t talker_beep = {
-    .format = talker_beep_format,
-    .change = talker_beep_change,
 };
 
 // Taken at each transmission: DMR into the codec (HRC7000SetMicGainDMR()), FM into the FD6818
@@ -505,7 +491,6 @@ static const ui_item_t sound_options_items[] = {
     {TEXT_BEEP_VOLUME, ICONS_COUNT, UI_ITEM_CUSTOM, &beep_volume, NULL},
     {TEXT_DMR_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &dmr_beep, NULL},
     {TEXT_RX_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &rx_beep_item, NULL},
-    {TEXT_TALKER_BEEP, ICONS_COUNT, UI_ITEM_CUSTOM, &talker_beep, NULL},
     {TEXT_FM_TX_TONES, ICONS_COUNT, UI_ITEM_LIST, &tx_tones, NULL},
     {TEXT_DMR_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_dmr, NULL},
     {TEXT_FM_MIC_GAIN, ICONS_COUNT, UI_ITEM_NUMBER, &mic_gain_fm, NULL},

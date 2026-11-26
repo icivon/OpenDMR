@@ -29,6 +29,7 @@
  *   'D' 'k' key(1) kind(1) modifiers(1)  a key event into the UI queue: kind 0 press, 1 long, 2 repeat, 3 release,
  *                                        4 a press and release, 5 a long press (press, long, release); key: ui.h
  *                                        UI_KEY_x (PTT too), modifiers UI_MODIFIER_x   -> 'D' 'k' ok(1)
+ *   'D' 'r' steps(1)                     the knob turned (signed, + clockwise)    -> 'D' 'r' ok(1)
  *   'D' 'q'                              the state, "name=value" lines             -> 'D' 'q' length(2) text
  *   'D' 'g' id(3)                         the APRS-over-DMR gateway, 24 bit big endian -> 'D' 'g' ok(1)
  *   'D' 'w' via(1)                        0 AFSK, 1 DMR, 2 both                     -> 'D' 'w' ok(1)
@@ -50,6 +51,7 @@
 #include "codeplug.h"
 #include "codeplug_text.h"
 #include "radio.h"
+#include "fd6818.h"
 #include "tx_target.h"
 #include "radio_hooks.h"
 #include "settings.h"
@@ -222,6 +224,7 @@ static uint32_t state(char *text, uint32_t size)
     put(&o, "noise", "%u", (unsigned)radio_noise());       // FD6818 0x65, the last reading
     put(&o, "lockouts", "%u,%u,%d", (unsigned)scan_skipped_channels.count, (unsigned)scan_skipped_frequencies.count,
         scan_saved_count());
+    put(&o, "rf_chip", "%04x", (unsigned)fd6818_chip_id()); // 4819 FD6818, 4829 FD6818B
     put(&o, "aprs_via", "%u", (unsigned)extra_options_aprs_via());
     put(&o, "aprs_gateway", "%u", (unsigned)extra_options_aprs_dmr_gateway());
     uint32_t flags;
@@ -288,6 +291,12 @@ uint32_t test_link_command(volatile uint8_t *request, volatile uint8_t *reply, u
         case 'k':
             reply[2] = key_event(request[2], request[3], request[4]) ? 1 : 0;
             return 3;
+        case 'r': {
+            ui_event_t ev = {.type = UI_EVENT_ROTARY, .steps = (int8_t)request[2]};
+
+            reply[2] = ui_post(&ev) ? 1 : 0;
+            return 3;
+        }
         case 'q': {
             uint32_t n = state((char *)&reply[4], reply_size - 4);
 

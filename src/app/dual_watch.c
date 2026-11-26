@@ -30,13 +30,22 @@
  * OpenDMR, screen: the dual watch (dual_watch.h). After OpenDM32 user_interface/uiDualWatch.c.
  *
  * Two paths, each any channel or VFO A / B (settings.dual_watch_path: a channel number, -1 VFO A, -2 VFO B; 0 is VFO A
- * for the first path, VFO B for the second), the same one twice allowed (one panel then). Watched in turn, a dwell on
+ * for the first path, VFO B for the second), the same one twice allowed (both panels shown, one path watched).
+ * Watched in turn, a dwell on
  * each; a carrier (FM) or timeslot sync (DMR) is checked for audio, then it stays on that path while the signal lasts
- * and DW_HANG_MS after it (the answer). The transmit path: the one heard last (DW_FOLLOW_MS), or a fixed one (UP the
- * upper, DOWN the lower; "follow" again in the menu).
+ * and DW_HANG_MS after it (the answer).
  *
- * Keys: the left key the main menu, held the dual watch menu (off, the transmit path); the right key back to the
- * single watch; the PTT transmits on the transmit path.
+ * The home screen with one more path watched (the user's design, 2026-11-25): one path is the selected one
+ * (BIT_DW_TX_1 / _2), and it is the channel or VFO of the home screen under this one. Turned on there, that channel or
+ * VFO is the selected path, on top; the other path is the other one of the last time (the same allowed). UP / DOWN
+ * select the upper / lower path (the home screen goes to it). Every other key is the home screen's, done on it under
+ * this screen (ui_handle_under()): the knob, LEFT / RIGHT, the digits, *, #, SK1 / SK2 with them, the left key (its
+ * quick menu, where the dual watch is turned off; held: the main menu), the right key (channel <-> VFO, held: VFO
+ * A / B).
+ * A scan started there turns the dual watch off, as SK2 + the right key does ("Close" on its soft key while SK2 is
+ * held). Off: the home screen is the selected path.
+ *
+ * The PTT: on the path heard last for DW_FOLLOW_MS after its signal (the answer), else on the selected path.
  */
 
 #include <stdio.h>
@@ -55,16 +64,18 @@
 #include "last_heard.h"
 #include "tones.h"
 #include "text.h"
-#include "menus.h"
-#include "list_screen.h"
+#include "channel_screen.h"
+#include "channel_details.h"
 #include "vfo_screen.h"
+#include "lock_screen.h"
+#include "keymap.h"
 #include "tx_screen.h"
 #include "tx_target.h"
 #include "dual_watch.h"
 
 #define BIT_DUAL_WATCH    (1UL << 10) // BIT_DUAL_WATCH (BIT_UNUSED_1)
-#define BIT_DW_TX_1       (1UL << 25) // the transmit path fixed: the first
-#define BIT_DW_TX_2       (1UL << 26) // the second (neither: follow)
+#define BIT_DW_TX_1       (1UL << 25) // the selected path: the first (neither, older settings: the first too)
+#define BIT_DW_TX_2       (1UL << 26) // the second
 
 #define DW_TICK_MS        10
 #define DW_DWELL_FM_MS    135   // as the VFO dual watch of OpenGD77
@@ -88,7 +99,7 @@ typedef enum {
 
 typedef struct {
     codeplug_channel_t channel;
-    uint32_t talk_group; // DMR: the contact of the channel, or the first of its RX group
+    uint32_t talk_group; // DMR: the contact of the channel, or the first of its RX group; the selected: its target
     char name[20];
     bool vfo;
 } path_t;
@@ -101,12 +112,9 @@ static uint32_t signal_ms; // the last time the signal was there
 static int heard = -1;     // the path heard last
 static uint32_t heard_ms;
 static uint32_t redraw_ms;
-static bool menu_open = false;
-static int menu_item = 0;
-static int menu_tx = 0; // 0 follow, 1 the first path, 2 the second
-static bool green_down = false;
-static bool red_down = false;
+static bool opening = false;     // turned on: the home screen's channel or VFO becomes the selected path, on top
 static bool transmitted = false; // the transmit screen was pushed: back from it, stay on that path
+static bool sk2_held = false;    // the right soft key says "Close" (SK2 + the right key turns the dual watch off)
 
 bool dual_watch_is_on(void)
 {
@@ -115,6 +123,7 @@ bool dual_watch_is_on(void)
 
 void dual_watch_set(bool on)
 {
+    opening = on && !dual_watch_is_on();
     settings_set_option(BIT_DUAL_WATCH, on);
     settings_save_if_changed();
 }
@@ -140,43 +149,114 @@ static bool paths_same(void)
     return path_ref(0) == path_ref(1);
 }
 
+static int selected(void)
+{
+    return (settings.bitfield_options & BIT_DW_TX_2) ? 1 : 0;
+}
+
+static void set_selected(int i)
+{
+    settings_set_option(BIT_DW_TX_1, i == 0);
+    settings_set_option(BIT_DW_TX_2, i == 1);
+}
+
+// The home screen's channel or VFO: the selected path (turned on: on top, the other one of the last time below)
+static void paths_from_home(void)
+{
+    int16_t home = (int16_t)channel_details_current_ref();
+    int sel = selected();
+
+    if (home == 0) {
+        return; // no channel shown
+    }
+    if (opening) {
+        int16_t other;
+
+        opening = false;
+        if ((settings.dual_watch_path[0] == 0) && (settings.dual_watch_path[1] == 0)) {
+            other = (home == -1) ? -2 : -1; // the first time: a VFO
+        } else {
+            other = (path_ref(1 - sel) != home) ? path_ref(1 - sel) : path_ref(sel);
+        }
+        settings.dual_watch_path[0] = home;
+        settings.dual_watch_path[1] = other;
+        set_selected(0);
+        settings_changed();
+    } else if (path_ref(sel) != home) {
+        settings.dual_watch_path[sel] = home; // changed there (another channel, the VFO, ...)
+        settings_changed();
+    }
+}
+
+// The home screen's channel for the radio (its changes made with the keys, the TG picked), NULL: none
+static const codeplug_channel_t *home_channel(void)
+{
+    const ui_screen_t *home = vfo_screen_is_home() ? &vfo_screen : &channel_screen;
+
+    return home->channel ? home->channel() : NULL;
+}
+
 static void load_path(int i)
 {
     int16_t ref = path_ref(i);
     path_t *p = &paths[i];
+    // the selected path, or the same channel or VFO on the other: the home screen's, so both follow what is changed
+    const codeplug_channel_t *home = ((i == selected()) || (ref == path_ref(selected()))) ? home_channel() : NULL;
     codeplug_contact_t contact;
     codeplug_rx_group_t group;
 
-    if ((ref > 0) && codeplug_channel_in_use(ref) && codeplug_get_channel(ref, &p->channel)) {
+    if ((ref > 0) && codeplug_channel_in_use(ref) && (home || codeplug_get_channel(ref, &p->channel))) {
         p->vfo = false;
+        if (home) {
+            memcpy(&p->channel, home, sizeof(p->channel));
+        }
         codeplug_text_name(p->channel.name, CODEPLUG_NAME_LENGTH, p->name, sizeof(p->name));
     } else {
         int n = (ref == -2) ? 1 : 0;
 
-        memcpy(&p->channel, vfo_screen_vfo(n), sizeof(p->channel));
+        memcpy(&p->channel, home ? home : vfo_screen_vfo(n), sizeof(p->channel));
         // the VFO's own power (0: the radio's), as the VFO screen
         p->vfo = true;
         snprintf(p->name, sizeof(p->name), "VFO %c", (n == 1) ? 'B' : 'A');
     }
-
     p->talk_group = 9; // as the VFO screen when nothing is set
-    if (p->channel.mode == CODEPLUG_MODE_DMR) {
-        if ((p->channel.rx_group_list != 0) && codeplug_get_rx_group(p->channel.rx_group_list, &group) &&
-            (group.contact_count > 0) && codeplug_get_contact(group.contacts[0], &contact)) {
-            p->talk_group = contact.id;
+    if (p->channel.mode != CODEPLUG_MODE_DMR) {
+        return;
+    }
+    if (home) {
+        tx_target_t target;
+
+        tx_target_get(&p->channel, &target);
+        if (target.id != 0) {
+            p->talk_group = target.id;
         }
-        if ((p->channel.contact != 0) && codeplug_get_contact(p->channel.contact, &contact)) {
-            p->talk_group = contact.id |
-                            ((contact.call_type == CODEPLUG_CALL_PRIVATE) ? ((uint32_t)TX_TARGET_PC_FLAG << 24) : 0);
-        }
+        return;
+    }
+    if ((p->channel.rx_group_list != 0) && codeplug_get_rx_group(p->channel.rx_group_list, &group) &&
+        (group.contact_count > 0) && codeplug_get_contact(group.contacts[0], &contact)) {
+        p->talk_group = contact.id;
+    }
+    if ((p->channel.contact != 0) && codeplug_get_contact(p->channel.contact, &contact)) {
+        p->talk_group = contact.id |
+                        ((contact.call_type == CODEPLUG_CALL_PRIVATE) ? ((uint32_t)TX_TARGET_PC_FLAG << 24) : 0);
     }
 }
 
-// The path the radio is on (radio_channel(), after the event), and its TX ID
+static void load_paths(void)
+{
+    load_path(0);
+    load_path(1);
+}
+
+// The path the radio is on (radio_channel(), after the event), and its TX ID (the selected one: the home screen's
+// target, set when its channel is asked)
 static void tune_path(int i, uint32_t now)
 {
     current = i;
     state_ms = now;
+    if ((i == selected()) && home_channel()) {
+        return; // asking the home screen for its channel gave the radio its target
+    }
     if (paths[i].channel.mode == CODEPLUG_MODE_DMR) {
         dmr_set_tx_id(paths[i].talk_group);
     }
@@ -184,19 +264,16 @@ static void tune_path(int i, uint32_t now)
 
 static int tx_path(uint32_t now)
 {
-    if (settings.bitfield_options & BIT_DW_TX_1) {
-        return 0;
-    }
-    if (settings.bitfield_options & BIT_DW_TX_2) {
-        return 1;
+    if (paths_same()) {
+        return selected(); // one path watched: shown twice, the PTT tag on the selected panel
     }
     if ((state == STATE_RECEIVING) || (state == STATE_HANG)) {
         return current;
     }
     if ((heard >= 0) && ((now - heard_ms) < DW_FOLLOW_MS)) {
-        return heard;
+        return heard; // the answer
     }
-    return 0;
+    return selected();
 }
 
 static bool dmr(void)
@@ -274,16 +351,14 @@ static void enter(void *arg)
 
     (void)arg;
     transmitted = false;
-
-    load_path(0);
-    load_path(1);
-    menu_open = false;
-    green_down = red_down = false;
+    sk2_held = false;
+    paths_from_home();
+    load_paths();
     if (from_tx) {
         tune_path(current, now);
         signal_ms = now;
     } else {
-        tune_path(0, now);
+        tune_path(selected(), now);
         state = STATE_WATCHING;
     }
     radio_set_scanning(true); // no receive beeps at each path
@@ -293,6 +368,70 @@ static void enter(void *arg)
 static void leave(void)
 {
     radio_set_scanning(false);
+}
+
+// Back on top after the home screen took a key: the selected path as it is there now; changed (another channel, a
+// frequency, ...): listened to at once
+static void resume(void)
+{
+    codeplug_channel_t before;
+    int sel = selected();
+    int16_t ref = path_ref(sel);
+
+    memcpy(&before, &paths[sel].channel, sizeof(before));
+    paths_from_home();
+    load_paths();
+    if ((path_ref(sel) != ref) || (memcmp(&before, &paths[sel].channel, sizeof(before)) != 0)) {
+        tune_path(sel, systime_get_ms());
+        state = STATE_WATCHING;
+    } else if (current == sel) {
+        (void)home_channel(); // its target again
+    }
+    radio_set_scanning(true);
+    ui_timer_start(DW_TICK_MS);
+}
+
+// Kept on top after the home screen took a key: not when it started a scan (the dual watch ends: the scan is theirs)
+static bool keep(void)
+{
+    if (channel_screen_scanning() || vfo_screen_scanning()) {
+        dual_watch_set(false);
+    }
+    return dual_watch_is_on();
+}
+
+// The home screen on the selected path (done under this screen)
+static bool go_to_selected(void *arg)
+{
+    int16_t ref = path_ref(selected());
+
+    (void)arg;
+    if (ref < 0) {
+        int n = -1 - ref;
+
+        if (vfo_screen_current() != n) {
+            settings.current_vfo_number = (uint8_t)n;
+            settings_changed();
+        }
+        if (!vfo_screen_is_home()) {
+            vfo_screen_show();
+        }
+    } else if (channel_screen_select(ref) && vfo_screen_is_home()) {
+        vfo_screen_leave();
+    }
+    return true;
+}
+
+static void select_path(int i)
+{
+    if (i == selected()) {
+        return;
+    }
+    set_selected(i);
+    settings_changed();
+    if (ui_under(go_to_selected, NULL, keep)) {
+        resume();
+    }
 }
 
 // The PTT: on the transmit path, then stay on it for the answer
@@ -312,31 +451,6 @@ static void transmit(void)
     tx_screen_open(text(TEXT_DUAL_WATCH), paths[p].name, &paths[p].channel);
 }
 
-static bool handle_menu(const ui_event_t *ev)
-{
-    if ((ev->type == UI_EVENT_KEY_RELEASE) && (ev->key == UI_KEY_RED)) {
-        menu_open = false;
-    } else if ((ev->type == UI_EVENT_KEY_PRESS) && ((ev->key == UI_KEY_UP) || (ev->key == UI_KEY_DOWN))) {
-        menu_item = 1 - menu_item;
-    } else if ((menu_item == 1) && (ev->type == UI_EVENT_KEY_PRESS) &&
-               ((ev->key == UI_KEY_RIGHT) || (ev->key == UI_KEY_LEFT))) {
-        menu_tx = (menu_tx + ((ev->key == UI_KEY_RIGHT) ? 1 : 2)) % 3;
-    } else if ((ev->type == UI_EVENT_KEY_RELEASE) && (ev->key == UI_KEY_GREEN) && !ev->long_press) {
-        if (menu_item == 0) {
-            dual_watch_set(false);
-            ui_pop();
-            return false;
-        }
-        settings_set_option(BIT_DW_TX_1, menu_tx == 1);
-        settings_set_option(BIT_DW_TX_2, menu_tx == 2);
-        settings_save_if_changed();
-        menu_open = false;
-    } else {
-        return false;
-    }
-    return true;
-}
-
 static bool handle(const ui_event_t *ev)
 {
     switch (ev->type) {
@@ -344,10 +458,12 @@ static bool handle(const ui_event_t *ev)
             bool redraw = watch(systime_get_ms());
 
             ui_timer_start(DW_TICK_MS);
-            return redraw && !menu_open;
+            return redraw;
         }
         case UI_EVENT_DATA:
-            return !menu_open;
+            load_paths();
+            return true;
+        case UI_EVENT_ROTARY:
         case UI_EVENT_KEY_PRESS:
         case UI_EVENT_KEY_LONG:
         case UI_EVENT_KEY_REPEAT:
@@ -357,60 +473,42 @@ static bool handle(const ui_event_t *ev)
             return false;
     }
 
-    if ((ev->type == UI_EVENT_KEY_PRESS) && (ev->key == UI_KEY_PTT)) {
-        transmit();
+    if ((ev->type != UI_EVENT_ROTARY) && (ev->key == UI_KEY_PTT)) {
+        if ((ev->type == UI_EVENT_KEY_PRESS) && !lock_screen_filter(ev)) {
+            transmit();
+        }
         return false;
     }
-    if (menu_open) {
-        return handle_menu(ev);
-    }
-    if (ev->type == UI_EVENT_KEY_PRESS) {
-        green_down |= (ev->key == UI_KEY_GREEN);
-        red_down |= (ev->key == UI_KEY_RED);
-    }
-    if ((ev->type == UI_EVENT_KEY_LONG) && (ev->key == UI_KEY_GREEN) && green_down) {
-        green_down = false;
-        menu_open = true;
-        menu_item = 0;
-        menu_tx = (settings.bitfield_options & BIT_DW_TX_1) ? 1 : ((settings.bitfield_options & BIT_DW_TX_2) ? 2 : 0);
-        return true;
-    }
-    if ((ev->type == UI_EVENT_KEY_RELEASE) && (ev->key == UI_KEY_GREEN) && green_down) {
-        green_down = false;
-        ui_push(&list_screen, (void *)&main_menu);
+    // SK2 + the right key: the dual watch off, back to the home screen on the selected path. The keymap sees the key
+    // (SK2 then was combined: not its own action on release); the rest of the key goes to the home screen, which
+    // takes no release without its press
+    if ((ev->type != UI_EVENT_ROTARY) && (ev->key == UI_KEY_RED) && (ev->modifiers & UI_MODIFIER_SK2)) {
+        (void)keymap_action(ev, vfo_screen_is_home() ? KEYMAP_SCREEN_VFO : KEYMAP_SCREEN_CHANNEL);
+        if ((ev->type == UI_EVENT_KEY_PRESS) && !lock_screen_filter(ev)) {
+            dual_watch_set(false);
+            ui_pop();
+        }
         return false;
     }
-    if ((ev->type == UI_EVENT_KEY_RELEASE) && (ev->key == UI_KEY_RED) && red_down) {
-        red_down = false;
-        dual_watch_set(false); // back to the single watch
-        ui_pop();
+    if ((ev->type != UI_EVENT_ROTARY) && (ev->key == UI_KEY_SK2) &&
+        ((ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_KEY_RELEASE))) {
+        sk2_held = (ev->type == UI_EVENT_KEY_PRESS); // and the key goes on to the home screen
+    }
+    // UP / DOWN alone: the upper / lower path selected (its press; the rest of the key is ours too)
+    if ((ev->type != UI_EVENT_ROTARY) && ((ev->key == UI_KEY_UP) || (ev->key == UI_KEY_DOWN)) &&
+        !(ev->modifiers & (UI_MODIFIER_SK1 | UI_MODIFIER_SK2)) && (channel_screen_typed() == 0)) {
+        if ((ev->type == UI_EVENT_KEY_PRESS) && !lock_screen_filter(ev)) {
+            select_path((ev->key == UI_KEY_UP) ? 0 : 1);
+            return true;
+        }
         return false;
     }
-    if ((ev->type == UI_EVENT_KEY_PRESS) && ((ev->key == UI_KEY_UP) || (ev->key == UI_KEY_DOWN)) && !paths_same()) {
-        bool upper = (ev->key == UI_KEY_UP); // the transmit path fixed; "follow" again in the menu
-
-        settings_set_option(BIT_DW_TX_1, upper);
-        settings_set_option(BIT_DW_TX_2, !upper);
-        settings_save_if_changed();
+    // Any other key: the home screen's, on the selected path
+    if (ui_handle_under(ev, keep)) {
+        resume();
         return true;
     }
     return false;
-}
-
-static void draw_menu(void)
-{
-    list_view_row_t row = {.icon = ICONS_COUNT};
-
-    list_view_draw_title(text(TEXT_DUAL_WATCH), NULL);
-    row.name = text(TEXT_DUAL_WATCH);
-    row.value = text(TEXT_ON);
-    row.selected = (menu_item == 0);
-    list_view_draw_row(0, &row);
-    row.name = text(TEXT_UI_DW_TX);
-    row.value = (menu_tx == 0) ? text(TEXT_UI_DW_FOLLOW) : paths[menu_tx - 1].name;
-    row.selected = (menu_item == 1);
-    list_view_draw_row(1, &row);
-    bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_BACK));
 }
 
 static void draw_panel(int i, int tx)
@@ -420,17 +518,15 @@ static void draw_panel(int i, int tx)
     int32_t top = PANEL_TOP + (i * PANEL_HEIGHT);
     int32_t x = WIDGET_MARGIN + 4;
     int32_t lx = x;
-    bool receiving = (i == current) && !paths_same() && ((state == STATE_RECEIVING) || (state == STATE_HANG));
+    bool receiving = ((i == current) || paths_same()) && ((state == STATE_RECEIVING) || (state == STATE_HANG));
     bool ptt = (i == tx);
+    bool typing = (i == selected()) && !vfo_screen_is_home() && (channel_screen_typed() > 0);
     int32_t right = FB_WIDTH - WIDGET_MARGIN;
     int power = (ch->libre_dmr_power != 0) ? (ch->libre_dmr_power - 1) : settings.tx_power_level;
     char buffer[48];
     char detail[24];
     dmr_call_t call;
 
-    if (paths_same() && (i == 1)) {
-        return; // one path only
-    }
     // The path with a signal: a green bar on the left
     if (i == 1) { // between the two paths, to be seen
         draw_fill_rect(WIDGET_MARGIN, top - 2, FB_WIDTH - (2 * WIDGET_MARGIN), 2, THEME_COLOUR_OFF);
@@ -478,22 +574,39 @@ static void draw_panel(int i, int tx)
     }
     draw_text(right, top + 8, buffer, &font_roboto17, FONT_ALIGN_RIGHT, THEME_COLOUR_TEXT_LABEL);
 
-    // The name, large; a call: the caller's callsign (its ID when not known)
-    draw_text(x, top + 32, (caller ? who : p->name), &font_roboto32_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+    // The name, large; a call: the caller's callsign (its ID when not known); typed on the selected path: the channel
+    // number or the frequency
+    if ((i == selected()) && vfo_screen_is_home() && vfo_screen_draw_entry(x, top + 32, &font_roboto32_bold)) {
+        // the frequency being typed
+    } else if (typing) {
+        snprintf(buffer, sizeof(buffer), "-> %d", channel_screen_typed());
+        draw_text(x, top + 32, buffer, &font_roboto32_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+    } else {
+        draw_text(x, top + 32, (caller ? who : p->name), &font_roboto32_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+    }
 
-    // "RX" and "TX" small, each before its frequency
+    // "RX" and "TX" small, each before its frequency; the selected VFO: in the one the knob and the digits change, the
+    // digits its step changes marked (^), green (RX) or red (TX) (SK2 + UP / DOWN choose it)
+    bool edited_vfo = (i == selected()) && p->vfo && vfo_screen_is_home();
+
     lx = x;
     for (int f = 0; f < 2; f++) {
         uint32_t frequency = f ? ch->tx_freq : ch->rx_freq;
+        int32_t start;
 
         lx = font_draw_text(lx, top + 70 + (font_roboto20.ascent - font_roboto14.ascent), text(f ? TEXT_UI_TX : TEXT_UI_RX),
                             &font_roboto14, FONT_ALIGN_LEFT, theme_colour(THEME_COLOUR_TEXT_LABEL)) +
              2;
         snprintf(buffer, sizeof(buffer), "%lu.%05lu", (unsigned long)(frequency / 100000),
                  (unsigned long)(frequency % 100000));
+        start = lx;
         lx = font_draw_text(lx, top + 70, buffer, &font_roboto20, FONT_ALIGN_LEFT,
-                            theme_colour(THEME_COLOUR_TEXT_SECOND)) +
-             6; // both within the margin: xxx.xxxxx twice
+                            theme_colour(THEME_COLOUR_TEXT_SECOND));
+        if (edited_vfo && ((f == 1) == vfo_screen_editing_tx())) {
+            // one pixel lower than the frequency line's room: clear of its digits
+            vfo_screen_draw_step_marks(start, top + 71, buffer, &font_roboto20, vfo_screen_step(), f == 1, 5);
+        }
+        lx += 6; // both within the margin: xxx.xxxxx twice
     }
 
     // Receiving: the S meter; else the timeslot and TG, or the tone
@@ -524,16 +637,20 @@ static void draw_panel(int i, int tx)
 static void draw(void)
 {
     status_bar_data_t status = {0};
+    bool typing = vfo_screen_is_home() ? vfo_screen_typing() : (channel_screen_typed() > 0);
 
-    if (menu_open) {
-        draw_menu();
-        return;
-    }
     status.state = radio_is_receiving() ? STATUS_BAR_RECEIVING : STATUS_BAR_IDLE;
     status_bar_draw(&status);
     draw_panel(0, tx_path(systime_get_ms()));
     draw_panel(1, tx_path(systime_get_ms()));
-    bottom_bar_draw_soft_keys(text(TEXT_MENU), text(TEXT_UI_BACK));
+    if (typing) {
+        bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_DELETE)); // as on the home screens
+    } else {
+        // The right key: where it goes (the selected path to the VFO or back to its channel); SK2 held: Close
+        const char *right = sk2_held ? text(TEXT_UI_CLOSE) : (vfo_screen_is_home() ? text(TEXT_APRS_CHANNEL) : "VFO");
+
+        bottom_bar_draw_soft_keys(text(TEXT_MENU), right);
+    }
 }
 
 const ui_screen_t dual_watch_screen = {

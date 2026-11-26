@@ -62,6 +62,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | SK2 + ▲ / ▼ | Zone + / − (channel mode); which frequency ▲ ▼ and the knob change, RX or TX (VFO) | Same |
 | SK2 alone | Call back the talk group just heard | — |
 | SK1 alone | FM broadcast radio | Same |
+| SK1 held alone | Lock the keypad (SK1 + * unlocks) | Same |
 | SK1 + ▲ / ▼ | Scan up / down | Same |
 | SK1 + 1 | APRS on / off | Same |
 | SK1 + 3 | Send an APRS beacon now | Same |
@@ -118,11 +119,13 @@ The radio starts in channel mode (in the VFO when it was left there).
 
 <img src="manual/en/channel-menu.png" alt="Channel quick menu"> <img src="manual/en/channel-menu-2.png" alt="Channel quick menu 2">
 
-▲ ▼ choose a row, ◀ ▶ change its value, the menu key applies it and closes the menu, the back key closes it without
-changes.
+▲ ▼ choose a row, ◀ ▶ or the knob change its value (at once, to be heard); the menu key is OK: keeps the changes
+(or does the row's action) and closes the menu; the back key is Cancel: puts back the values of when the menu was
+opened and closes it. The VFO quick menu works the same.
 
 | Row | What it does |
 |---|---|
+| Dual Watch | Dual watch on / off (see [8](#8-dual-watch)) |
 | Channel details | All the settings of this channel (below) |
 | Channel --> VFO | Copy this channel into the VFO in use, then go to the VFO |
 | VFO --> Channel | Overwrite this channel with the VFO in use (asks first) |
@@ -132,8 +135,6 @@ changes.
 | TS Filter | On: only the channel's timeslot is heard |
 | Talkaround | On a repeater channel: talk direct on the receive frequency |
 | Dist sort | Channels of the zone in order of distance from you (needs your location) |
-| Dual Watch | Dual watch on / off (see [8](#8-dual-watch)) |
-| Add to dual watch | Put this channel into a dual watch path (the path it replaces is shown on the right) |
 
 ### Channel details
 
@@ -169,8 +170,8 @@ and B): **hold the back key** to switch, or choose in the VFO menu.
 | Squelch (FM, AM, SSB) / talk group (DMR, P25, NXDN) | ▶ ◀ |
 
 Both frequencies are shown large: the receive one with `RX` (green) on its right, the transmit one with `TX` (red).
-The one the keys change is white, and the digit its step changes is underlined (in its colour): a 12.5 or 25 kHz step
-underlines the second decimal, 2.5 – 6.25 kHz the third. The top line shows the VFO and the step itself.
+The one the keys change is white, with a ^ in its colour under each digit its step changes: a 12.5 kHz step marks
+the 2nd to 4th decimals, 25 kHz the 2nd and 3rd, 6.25 kHz the 3rd to 5th, 5 and 10 kHz one digit. The top line shows the VFO and the step itself.
 
 **AM, USB and LSB are receive only** (the RF chip can only transmit FM): the bottom bar shows `Rx Only`, and the PTT
 shows "Switch to FM or DMR". Their squelch is on the signal strength (0 %: always open); it closes after the signal
@@ -227,14 +228,14 @@ comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
 
 | Row | What it does |
 |---|---|
+| Dual Watch | See [8](#8-dual-watch) |
 | Channel details | All the settings of this VFO (as the channel details) |
-| VFO B / VFO A | The menu key on this row switches VFO |
+| VFO B / VFO A | ◀ ▶ or the knob switch VFO |
 | Tx <--> Rx | Swap the frequencies |
 | Rx --> Tx / Tx --> Rx | Copy the receive frequency to transmit / the other way |
 | Filter, DMR Filter, CC Scan, TS Filter | As in the channel menu |
 | VFO --> New Chan | Save the VFO as a new channel ("New channel N", in All Channels) |
 | Tone scan | Find the CTCSS / DCS tone the other station uses (any key stops on the tone found) |
-| Dual Watch, Add to dual watch | See [8](#8-dual-watch) |
 | Scan low = RX / Scan high = RX | The receive frequency becomes the lower / upper limit of the VFO scan |
 
 ---
@@ -322,19 +323,32 @@ While transmitting:
 
 <img src="manual/en/dual-watch.png" alt="Dual watch">
 
-Two paths watched at once, each **any channel or VFO A / B** (both may be the same).
+Two paths watched at once, each **any channel or VFO A / B** (both may be the same). The dual watch is the home
+screen with one more path watched: the **selected path** is the home screen's channel or VFO, and the keys work as there.
 
-- Switch it on: Dual Watch in the channel or VFO menu. The default paths are VFO A and VFO B; "Add to dual watch" on
-  a channel or VFO puts it in (into the path shown on the right; the next add replaces the other path).
+- **Switch it on**: Dual Watch, the first item of the channel or VFO menu (menu key): ◀ ▶ or the knob to On,
+  then the menu key (OK). The channel / VFO in use becomes
+  the selected path, on top; the other path is the other one of the last time (the first time VFO A, or VFO B when
+  VFO A is in use).
+- **Select**: ▲ / ▼ select the upper / lower path, which has the `PTT` badge; the home screen goes to it too.
+- **Change the selected path** as on the channel / VFO screen: the knob steps the channel or the frequency (on a VFO,
+  SK2 + ▲ ▼ choose receive or transmit; the one changed has a green or red ^ under the digits its step changes, as on the VFO screen); the digits enter a channel
+  number or a frequency; ◀ ▶ talk group or squelch; SK2 + ◀ ▶ power; \*, # and the SK1 / SK2 combinations as there;
+  the back key switches between channel and VFO (held: VFO A ↔ B). To put another channel or VFO in a path, select it
+  and change it there.
+- Both paths the same: both panels shown, the same, one path watched; a change shows on both.
 - The paths are watched in turn; a path with a signal is kept while the signal lasts and a moment after (for the
   answer).
-- Each path: channel number or VFO, mode and power, `PTT` on the right of the transmit path; the name large; the
-  receive and transmit frequencies; the timeslot and talk group, or the tone.
+- Each path: channel number or VFO, mode and power; the name large; the receive and transmit frequencies; the
+  timeslot and talk group, or the tone.
 - A path with a signal: a green bar on its left, its S meter on the last line. A DMR call: the caller's callsign
   replaces the name (its ID when not known), the ID goes top right and the path's name to the left of the header.
-- Transmit: on the path heard last (it has the `PTT` badge); ▲ / ▼ fix the upper / lower path for transmit.
-- Menu key: the main menu; menu key held: the dual watch menu (off, the transmit path). Back key: back to the single
-  watch. Kept over power off.
+- **Transmit**: on the selected path; within 10 s after a signal on the other path, the PTT answers on that path (the
+  `PTT` badge is there then).
+- Bottom bar: Menu on the left; on the right where the back key goes (VFO or Channel), Close while SK2 is held.
+- **Switch it off**: **SK2 + back key**, or Dual Watch (the first item) in the selected path's menu (menu key);
+  starting a scan (SK1 + ▲ ▼) switches it off too. Off: back on the selected path's home screen. Menu key held: the
+  main menu. Kept over power off.
 
 ---
 
@@ -410,6 +424,40 @@ Version (git commit), build time, chip, model, credits.
 Two lines a call: the caller (callsign and name, or ID), the talk group and timeslot, how long ago on the right.
 ▲ ▼ move (SK2 + ▲ ▼: first / last); menu key: transmit to that talk group from now on (SK2 + menu key: a private
 call to the caller); **#** held clears the list.
+
+### Messages
+
+Main menu → **Messages** (with the number of unread ones): **Inbox**, **Outbox**, **Write message**, **Quick texts**. Each box
+keeps 32 messages; when full, the oldest is replaced. A DMR channel sends DMR messages, an M17 channel M17 messages; other
+modes can't send ("A DMR or M17 channel is needed"), all receive.
+
+**Inbox / Outbox**: two lines a message: who (callsign or ID, a talk group as TG) and when (the outbox: its state, Sending /
+Sent / Delivered / Not sent), then the start of the text; unread ones have the envelope icon. ▲ ▼ select, the left key reads.
+
+**Reading**: who as the title, the mode, the ID and when under it, the text wrapped, ▲ ▼ scroll. The left key **replies** in
+the inbox (to the same radio or talk group) and **sends it again** in the outbox (as it was, on the channel now).
+
+**Deleting**: hold **SK2**: the left soft key turns into **Delete**; press the left key to delete, after a question. Reading,
+it deletes that message; in the inbox or outbox list, the selected one, without opening it. The CPS's Messages page deletes
+many at once.
+
+**Writing**:
+
+- The top row is **To**: on DMR the ID typed with the digits, **#** switches between a talk group (TG) and a private
+  message, ◀ deletes a digit; it starts with the channel's transmit target. On M17 a callsign; empty sends to all.
+- Below is the text: the digits type letters and digits (several presses), **\*** symbols, **#** inserts a quick text;
+  ◀ ▶ move the cursor, **SK2 + ◀** deletes the character before it, **SK2 + ▶** inserts a space, ◀ / ▶ held go to the
+  start / end. The title counts the characters (140 at most).
+- ▲ ▼ move between To and the text, the left key sends. The result shows as a notice at the top, and in the outbox.
+
+**Quick texts**: written with the CPS's Messages page (any language). Pick one from the menu to start a new message with
+it; while writing, **#** inserts one at the cursor.
+
+**A new message** shows a notice with a sound: the left key reads it, the right key closes the notice. The status bar shows
+the number of unread messages.
+
+**DMR SMS format** (Options → Radio options): **Motorola** (TMS, the default; the other radio acknowledges it and the
+outbox shows Delivered), **Hytera** or **DMR** (AnyTone's). Messages in any of them are received.
 
 ### Radio info
 
@@ -489,6 +537,10 @@ these settings.**
 | Power To All | The default power into every channel and VFO A / B (asked first) |
 | User Power | PA drive of the "user" power level (+W-), 0 - 4100 (steps of 10 with SK2 held) |
 | DMR crc | Off: DMR data CRC errors are ignored |
+| DMR SMS format | The format DMR messages are sent in, see [Messages](#messages) |
+
+RAS repeaters need `DMR crc = Off`: their LC CRC is computed with a secret key, so the standard check fails on purpose.
+The FEC still runs; only the final CRC check is skipped.
 
 Power levels: 50mW, 500mW, 1W, 2W, 3W, 4W, 5W, 7W, 10W, +W-. 1W / 4W / 10W are the factory calibration of the stock
 Low / Middle / High; the others are estimated from them, not measured. Each channel, VFO A and VFO B has its own power:
@@ -533,12 +585,11 @@ each in the source (`src/graphics/themes/`).
 | Timeout beep | Seconds before the transmit timeout when the warning starts |
 | Beep vol | Volume of the key beeps and other beeps |
 | DMR beep | DMR transmit start / stop beeps |
-| RX beep | Beep at the end of a carrier / talker |
-| Talker beep | Beep when a talker starts too |
+| RX beep | Beeps on receive: None / Carrier (when it ends) / Talker (when a DMR talker ends) / Talker+start (when it starts too) / Both (carrier and talker) / All |
 | FM Tx tones | FM transmit tones (below) |
 | DMR mic / FM mic | Microphone gain of each mode |
 | VOX Thres. / VOX Tail | VOX: 0 = off, smaller is more sensitive; how long it keeps transmitting after you stop |
-| Prompt | Silent / Beep / No Keys (no voice prompts yet) |
+| Prompt | Silent (no key beeps, no prompt beeps) / Beep / No Keys (key beeps off, prompts still beep); no voice prompts yet |
 | DMR Rx AGC | Automatic gain of DMR receive (off / 0 – 21 dB) |
 
 <img src="manual/en/fm-tx-tones.png" alt="FM Tx tones">
@@ -613,8 +664,9 @@ Once the stock sector is back (a backup written back, for example), it is used a
 ### Keypad lock
 
 - In the main menu, **\*** locks the keypad, **#** locks the PTT (again: unlocks the PTT); the radio goes home.
-- On a main screen, **SK2 held alone** (about half a second, then released) locks the keypad too; Key settings →
-  Lock moves it to other keys. Held with another key (SK2 + ▲ ...) it doesn't lock.
+- On a main screen, **SK1 held alone** (about half a second, then released) locks the keypad too; Key settings →
+  Lock moves it to other keys. Held with another key (SK1 + ▲ ...) it doesn't lock. SK2 held is a modifier (Delete
+  in the messages, Close in the dual watch) and doesn't lock.
 - While locked, a key shows the lock page for a moment; **SK1 + \*** unlocks (SK2 + \* can't be pressed on the
   DM-32: a held SK2 hides the keys 1, 4, 7, \*). With only the keypad locked the PTT still transmits.
 - General options → Auto lock: locks the keypad and the PTT after a time without use.
@@ -712,6 +764,6 @@ firmware: see the README.
 - P25: simplex group calls in clear only; known issues in [docs/p25.md](p25.md), section 6.
 - NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
   ID to callsign database yet.
-- M17: simplex voice only (no packet data, no encryption), always to ALL; the voice is duller than DMR / NXDN (Codec 2
+- M17: simplex voice and text messages only (no other packet data, no encryption), always to ALL; the voice is duller than DMR / NXDN (Codec 2
   3200).
 - Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.

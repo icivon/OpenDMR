@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include "ui.h"
 #include "codeplug.h"
+#include "font.h"
 
 // The VFO screen (docs/ui-design.md 5.2): the home screen in VFO mode
 extern const ui_screen_t vfo_screen;
@@ -55,5 +56,14 @@ void vfo_screen_save(int vfo); // after a change from another screen: written to
 void vfo_screen_set_power(uint8_t power); // Power To All (codeplug_set_all_power()): the VFOs in RAM take it
 int vfo_screen_scanning(void);    // 0 no scan, 1 scanning, 2 standing on a signal (the test interface)
 void vfo_screen_tone_scan(int type); // the quick menu: the receive tone scanned (0 all, 1 CTCSS, 2 DCS, 3 iDCS)
+// The dual watch: a frequency being typed drawn at x, y in font (false: none); typed
+bool vfo_screen_draw_entry(int32_t x, int32_t y, const font_t *font);
+bool vfo_screen_typing(void); // a frequency being typed
+unsigned vfo_screen_step(void); // the step of the VFO in use, 10 Hz units
+// The digits the step changes in a frequency drawn at x, y in font: a ^ under each, rows high, its rows 1, 3, 5 ...
+// pixels wide (green RX, red TX)
+void vfo_screen_draw_step_marks(int32_t x, int32_t y, const char *frequency, const font_t *font, unsigned step, bool tx,
+                                int rows);
+bool vfo_screen_editing_tx(void); // the knob and the keys change the TX frequency (SK2 + UP / DOWN)
 
 #endif

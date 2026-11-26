@@ -63,7 +63,7 @@ typedef enum {
     KEYMAP_SCAN_DOWN,          // SK1 + DOWN: the same, downwards
     KEYMAP_APRS_TOGGLE,        // SK1 + 1: APRS beaconing on / off (OpenGD77)
     KEYMAP_APRS_SEND,          // SK1 + 3: an APRS beacon now (2 is in SK1's column, SK2 + 2 a quick key)
-    KEYMAP_LOCK,               // SK2 held alone: the keypad lock (as * in the main menu)
+    KEYMAP_LOCK,               // SK1 held alone: the keypad lock (as * in the main menu)
     KEYMAP_ACTIONS
 } keymap_action_t;
 

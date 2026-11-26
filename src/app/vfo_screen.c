@@ -154,6 +154,25 @@ static void vfo_screen_signal(s_meter_data_t *meter)
     meter->open = radio_is_receiving();
 }
 
+bool vfo_screen_draw_entry(int32_t x, int32_t y, const font_t *font)
+{
+    if (!digit_entry_active(&entry)) {
+        return false;
+    }
+    (void)digit_entry_draw_font(&entry, x, y, font);
+    return true;
+}
+
+bool vfo_screen_editing_tx(void)
+{
+    return editing_tx;
+}
+
+bool vfo_screen_typing(void)
+{
+    return digit_entry_active(&entry);
+}
+
 int vfo_screen_current(void)
 {
     return (settings.current_vfo_number == 1) ? 1 : 0;
@@ -208,6 +227,11 @@ static void vfo_power_off_save(void)
 static codeplug_channel_t *vfo(void)
 {
     return vfo_screen_vfo(vfo_screen_current());
+}
+
+unsigned vfo_screen_step(void)
+{
+    return step_of(vfo());
 }
 
 static void compute_radio_channel(void)
@@ -603,13 +627,10 @@ static void change_squelch(int direction)
 static void enter(void *arg)
 {
     (void)arg;
-    if (dual_watch_show()) {
-        set_home_mode(true);
-        return; // dual watch on: it is shown over this screen
-    }
     set_home_mode(true);
     green_down = red_down = false;
     held = 0;
+    (void)dual_watch_show(); // dual watch on: shown over this screen, its selected path this VFO
 }
 
 static void leave(void)
@@ -878,9 +899,52 @@ static const char *power_text(const codeplug_channel_t *v)
                : text(TEXT_RX_ONLY);
 }
 
+// The digits a step changes, a ^ under each (rows high, its rows 1, 3, 5 ... pixels wide; green RX, red TX): from the largest place of the step to its
+// last digit that is not 0 (xxx.xxxxx in 10 Hz units: 12.5 kHz three digits, 25 kHz two, 6.25 kHz three)
+void vfo_screen_draw_step_marks(int32_t x, int32_t y, const char *frequency, const font_t *font, unsigned step, bool tx,
+                                int rows)
+{
+    unsigned high = 1; // the largest place not over the step
+    unsigned low = 1;  // the last place of the step that is not 0
+    int first = 5;     // their decimals
+    int last = 5;
+    const char *dot = strchr(frequency, '.');
+    char part[16];
+
+    if ((step == 0) || !dot) {
+        return;
+    }
+    while (((high * 10) <= step) && (first > 1)) {
+        high *= 10;
+        first--;
+    }
+    while (((step % (low * 10)) == 0) && (last > first)) {
+        low *= 10;
+        last--;
+    }
+    size_t from = (size_t)(dot - frequency) + (size_t)first;
+    size_t to = (size_t)(dot - frequency) + (size_t)last + 1;
+    int32_t room = font->line_height - font->ascent; // under the baseline
+    int32_t top = y + font->ascent + ((room > rows) ? ((room - rows) / 2) : 0);
+
+    for (size_t at = from; at < to; at++) {
+        memcpy(part, frequency, at);
+        part[at] = '\0';
+        int32_t start = x + font_text_width(font, part);
+
+        part[at] = frequency[at];
+        part[at + 1] = '\0';
+        int32_t middle = (start + x + font_text_width(font, part)) / 2;
+
+        for (int row = 0; row < rows; row++) {
+            draw_fill_rect(middle - row, top + row, (2 * row) + 1, 1, (tx ? THEME_COLOUR_TX : THEME_COLOUR_RX));
+        }
+    }
+}
+
 // A frequency line: the frequency large (the digits typed while entering it), then on the right its label ("RX" on
-// green, "TX" on red) at the digits' top and "MHz" at their baseline. The one the keys change: white, its step
-// digit underlined.
+// green, "TX" on red) at the digits' top and "MHz" at their baseline. The one the keys change: white, the digits
+// of its step marked (^).
 static void draw_frequency(int32_t y, bool is_tx, uint32_t frequency, unsigned step)
 {
     const font_t *font = &font_roboto42_bold;
@@ -905,30 +969,9 @@ static void draw_frequency(int32_t y, bool is_tx, uint32_t frequency, unsigned s
     }
     draw_text(x, y, buffer, font, FONT_ALIGN_LEFT, (selected ? THEME_COLOUR_TEXT : THEME_COLOUR_TEXT_LABEL));
 
-    // The one the keys and the knob change: the digit of its step underlined (the largest place not over it)
+    // The one the keys and the knob change: the digits of its step marked
     if (selected) {
-        unsigned place = 1;   // in 10 Hz, the 5th decimal
-        int decimals = 5;     // its decimal
-        char *dot = strchr(buffer, '.');
-
-        while (((place * 10) <= step) && (decimals > 1)) {
-            place *= 10;
-            decimals--;
-        }
-        if (dot) {
-            size_t at = (size_t)(dot - buffer) + (size_t)decimals; // the digit underlined
-            char part[16];
-            int32_t start;
-            int32_t end;
-
-            memcpy(part, buffer, at);
-            part[at] = '\0';
-            start = x + font_text_width(font, part);
-            part[at] = buffer[at];
-            part[at + 1] = '\0';
-            end = x + font_text_width(font, part);
-            draw_fill_rect(start, y + font->line_height - 3, end - start, 3, (is_tx ? THEME_COLOUR_TX : THEME_COLOUR_RX));
-        }
+        vfo_screen_draw_step_marks(x, y, buffer, font, step, is_tx, 7);
     }
 }
 

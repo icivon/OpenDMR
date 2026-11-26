@@ -31,7 +31,8 @@
  *
  * - the main menu's "Messages" with the unread count; its menu: Inbox ("2 new"), Outbox, Write message, Quick texts
  * - a box: two-line rows as the last heard (who, when / the outbox's state, the text's start; unread with the mail
- *   icon); the left key reads
+ *   icon); the left key reads, SK2 + the left key deletes the selected one (asked first; "Delete" on the soft key
+ *   while SK2 is held, as reading)
  * - reading: who as the title, the mode, the call and when under it, the text wrapped (UP / DOWN scroll); the left key
  *   replies (the inbox: writing to the same) or sends it again (the outbox: as it was, to the same, on the channel
  *   now), SK2 + the left key deletes (asked first)
@@ -148,6 +149,45 @@ static int wrap(const char *t, const font_t *font, int32_t width, uint16_t *star
     return n;
 }
 
+// Deleting: SK2 + the left key, in a box (the selected message) or reading one, asked first. While SK2 is held the left
+// soft key says "Delete".
+static bool sk2_held;
+static int delete_box, delete_index;
+static bool delete_pops; // reading: back to the box once deleted
+
+static void deleted(bool yes)
+{
+    if (yes && sms_delete(delete_box, delete_index) && delete_pops) {
+        ui_pop();
+    }
+}
+
+static void ask_delete(int box, int index, bool pops)
+{
+    static message_box_t question;
+
+    delete_box = box;
+    delete_index = index;
+    delete_pops = pops;
+    question = (message_box_t){
+        .title = text(TEXT_SMS),
+        .line1 = text(TEXT_SMS_DELETE_QM),
+        .buttons = MESSAGE_BOX_YES_NO,
+        .answered = deleted,
+    };
+    ui_push(&message_box_screen, (void *)&question);
+}
+
+// SK2 pressed or released: true (the soft key's text changes)
+static bool sk2_changed(const ui_event_t *ev)
+{
+    if ((ev->key != UI_KEY_SK2) || ((ev->type != UI_EVENT_KEY_PRESS) && (ev->type != UI_EVENT_KEY_RELEASE))) {
+        return false;
+    }
+    sk2_held = (ev->type == UI_EVENT_KEY_PRESS);
+    return true;
+}
+
 /* ---- a box ---- */
 
 static int box_first;
@@ -181,6 +221,7 @@ static int box_of(void)
 static void box_enter(void *arg)
 {
     (void)arg;
+    sk2_held = false;
     box_first = 0;
     box_clamp(box_of(), ui_state());
 }
@@ -194,6 +235,9 @@ static bool box_handle(const ui_event_t *ev)
         box_clamp(box, sel);
         return true; // a message came, a state changed
     }
+    if (sk2_changed(ev)) {
+        return true;
+    }
     if (((ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_KEY_REPEAT)) && (count > 0)) {
         if (ev->key == UI_KEY_DOWN) {
             *sel = (*sel < (count - 1)) ? (*sel + 1) : *sel;
@@ -206,7 +250,11 @@ static bool box_handle(const ui_event_t *ev)
             return true;
         }
         if ((ev->key == UI_KEY_GREEN) && (ev->type == UI_EVENT_KEY_PRESS)) {
-            ui_push(&read_screen, read_arg(box, (int)*sel));
+            if (ev->modifiers & UI_MODIFIER_SK2) {
+                ask_delete(box, (int)*sel, false);
+            } else {
+                ui_push(&read_screen, read_arg(box, (int)*sel));
+            }
             return false;
         }
     }
@@ -222,7 +270,7 @@ static void box_draw(void)
     char position[16], who[48], when[16], sub[64];
     snprintf(position, sizeof(position), "%d/%d", (int)(sel + 1), count);
     list_view_draw_title(text((box == SMS_INBOX) ? TEXT_SMS_INBOX : TEXT_SMS_OUTBOX), (count > 0) ? position : NULL);
-    bottom_bar_draw_soft_keys(text(TEXT_SMS_READ), text(TEXT_UI_BACK));
+    bottom_bar_draw_soft_keys(text((sk2_held && (count > 0)) ? TEXT_UI_DELETE : TEXT_SMS_READ), text(TEXT_UI_BACK));
     if (count == 0) {
         list_view_row_t row = {.icon = ICONS_COUNT, .name = text(TEXT_LIST_EMPTY), .dimmed = true};
         list_view_draw_row(0, &row);
@@ -289,6 +337,7 @@ static int read_rows(void)
 
 static void read_enter(void *arg)
 {
+    sk2_held = false;
     if (arg) { // pushed (back on top: NULL, the same message)
         uintptr_t a = (uintptr_t)arg - 1;
         read_box = (int)(a >> 8);
@@ -305,22 +354,12 @@ static void read_enter(void *arg)
     lines = wrap(msg.text, body_font(), FB_WIDTH - (2 * WIDGET_MARGIN), line_start, line_len, LINES_MAX);
 }
 
-static void deleted(bool yes)
-{
-    if (yes && sms_delete(read_box, read_index)) {
-        ui_pop(); // back to the box
-    }
-}
-
-static const message_box_t delete_box = {
-    .title = NULL,
-    .buttons = MESSAGE_BOX_YES_NO,
-    .answered = deleted,
-};
-
 static bool read_handle(const ui_event_t *ev)
 {
     bool sk2 = (ev->modifiers & UI_MODIFIER_SK2) != 0;
+    if (sk2_changed(ev)) {
+        return true;
+    }
     if ((ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_KEY_REPEAT)) {
         if (ev->key == UI_KEY_DOWN) {
             if ((read_first + read_rows()) < lines) {
@@ -334,11 +373,7 @@ static bool read_handle(const ui_event_t *ev)
         }
         if ((ev->key == UI_KEY_GREEN) && (ev->type == UI_EVENT_KEY_PRESS)) {
             if (sk2) {
-                static message_box_t box;
-                box = delete_box;
-                box.title = text(TEXT_SMS);
-                box.line1 = text(TEXT_SMS_DELETE_QM);
-                ui_push(&message_box_screen, (void *)&box);
+                ask_delete(read_box, read_index, true);
                 return false;
             }
             if (read_box == SMS_OUTBOX) { // sent again, as it was
@@ -369,7 +404,9 @@ static void read_draw(void)
     char who[48], info[64], when[16];
     peer_of(read_box, &msg, who, sizeof(who));
     list_view_draw_title(who, NULL);
-    bottom_bar_draw_soft_keys(text((read_box == SMS_OUTBOX) ? TEXT_SMS_RESEND : TEXT_SMS_REPLY), text(TEXT_UI_BACK));
+    text_id_t left = (read_box == SMS_OUTBOX) ? TEXT_SMS_RESEND : TEXT_SMS_REPLY;
+
+    bottom_bar_draw_soft_keys(text(sk2_held ? TEXT_UI_DELETE : left), text(TEXT_UI_BACK));
     if (!lines && !msg.text[0]) {
         return;
     }

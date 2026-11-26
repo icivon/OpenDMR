@@ -40,8 +40,8 @@
 #include "keymap.h"
 
 #define KEYMAP_DATA_TYPE 0x44540002 // a custom data block of this firmware ("DT", 2)
-#define KEYMAP_VERSION   8 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3,
-                           // 8: KEYMAP_LOCK
+#define KEYMAP_VERSION   9 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3,
+                           // 8: KEYMAP_LOCK, 9: KEYMAP_LOCK on SK1 held (SK2 held is a modifier: "Delete", "Close")
 #define KEYMAP_SLOTS     32 // room for more actions: a block keeps its size
 #define SIDE_KEYS        (UI_MODIFIER_SK1 | UI_MODIFIER_SK2)
 #define NO_KEY           {UI_KEY_COUNT, 0, 0, 0}
@@ -80,7 +80,7 @@ static const action_t actions[KEYMAP_ACTIONS] = {
     [KEYMAP_SCAN_DOWN] = {TEXT_KEY_SCAN_DOWN, BOTH, false, {UI_KEY_DOWN, SK1, 0, 0}},
     [KEYMAP_APRS_TOGGLE] = {TEXT_KEY_APRS_TOGGLE, BOTH, false, {UI_KEY_1, SK1, 0, 0}},
     [KEYMAP_APRS_SEND] = {TEXT_KEY_APRS_SEND, BOTH, false, {UI_KEY_3, SK1, 0, 0}},
-    [KEYMAP_LOCK] = {TEXT_KEY_LOCK, BOTH, false, {UI_KEY_SK2, 0, 1, 0}},
+    [KEYMAP_LOCK] = {TEXT_KEY_LOCK, BOTH, false, {UI_KEY_SK1, 0, 1, 0}},
 };
 
 static struct {
@@ -135,6 +135,13 @@ void keymap_load(void)
     }
     if (stored.version < 8) {
         (void)keymap_set(KEYMAP_LOCK, actions[KEYMAP_LOCK].binding);
+    } else if (stored.version < 9) {
+        // The lock moved from SK2 held to SK1 held, unless it was set to other keys
+        keymap_binding_t lock = stored.bindings[KEYMAP_LOCK];
+
+        if ((lock.key == UI_KEY_SK2) && (lock.modifiers == 0) && lock.long_press) {
+            (void)keymap_set(KEYMAP_LOCK, actions[KEYMAP_LOCK].binding);
+        }
     }
     stored.version = KEYMAP_VERSION;
 }

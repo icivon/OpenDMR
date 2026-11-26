@@ -57,6 +57,12 @@ class Radio:
         self.event(name, LONG_CLICK if long else CLICK, mod)
         time.sleep(settle)
 
+    def knob(self, steps, settle=0.15):
+        """The knob turned steps (+ clockwise)"""
+        self._request(b'Dr' + bytes([steps & 0xFF]), b'Dr')
+        self.port.read(1)
+        time.sleep(settle)
+
     def keys(self, *names, settle=0.12):
         for n in names:
             self.key(n, settle=settle)

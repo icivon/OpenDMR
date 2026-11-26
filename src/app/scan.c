@@ -45,7 +45,8 @@
 #define SHORT_PAUSE_MS  500  // a carrier: time for the tone or the audio (SCAN_SHORT_PAUSE_TIME)
 // DMR sync (or a P25 data unit): time for the audio. The main firmware waits (1 superframe + 1 timeslot) x 4 = 1560 ms;
 // joining a DMR call already going on (as a scan does), the audio came 0.6 to 1.9 s after the retune (measured)
-#define SYNC_PAUSE_MS   3000
+#define SYNC_PAUSE_MS   2000 // 0.9: less dead time when the scan lands on an ongoing DMR call (still above the
+                             // measured 0.6 - 1.9 s until its audio; 1500 ms missed calls that start late)
 #define TIMESLOT_MS     30
 // DMR and P25: a step long enough to see a transmission without a repeater in the signal strength (on 27.5 ms of
 // every 60: radio_scan_peak() reads every few ms), then up to SIGNAL_WAIT_MS where it rose SIGNAL_RISE over the noise

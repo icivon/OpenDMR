@@ -173,6 +173,40 @@ void ui_home(void)
     enter_top(NULL);
 }
 
+bool ui_under(bool (*fn)(void *arg), void *arg, bool (*keep)(void))
+{
+    if (depth < 2) {
+        return false;
+    }
+    level_t taken = stack[depth - 1];
+
+    leave_top();
+    depth--;
+
+    const ui_screen_t *under = top();
+    int at = depth;
+
+    if (fn(arg)) {
+        redraw = true;
+    }
+    if ((depth == at) && (top() == under) && (!keep || keep())) {
+        stack[depth++] = taken;
+        redraw = true;
+        return true;
+    }
+    return false;
+}
+
+static bool handle_top(void *arg)
+{
+    return top()->handle && top()->handle((const ui_event_t *)arg);
+}
+
+bool ui_handle_under(const ui_event_t *ev, bool (*keep)(void))
+{
+    return ui_under(handle_top, (void *)ev, keep);
+}
+
 const ui_screen_t *ui_top_screen(void)
 {
     return (depth > 0) ? stack[depth - 1].screen : NULL;

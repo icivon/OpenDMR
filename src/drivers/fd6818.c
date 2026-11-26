@@ -27,7 +27,7 @@
  */
 
 /*
- * OpenDMR, driver: the FD6818B RF transceiver. After OpenDM32 hardware/AT1846S.c (soft SPI, the
+ * OpenDMR, driver: the FD6818 / FD6818B RF transceiver. After OpenDM32 hardware/AT1846S.c (soft SPI, the
  * tables, DCS, CTCSS) and hardware/radioHardwareInterface.c (frequency, receive, transmit), DM32 branches.
  *
  * The soft SPI runs from RAM with the bit timing of the stock firmware (its delay 0x2df70: 5 counts a half bit to
@@ -85,12 +85,8 @@
 #define REG_IF    0x3D
 #define REG_AFC   0x73
 #define AFC_OFF   0x0010
-#define REG_AGC_TOP  0x14 // the lowest gain of the AGC table
+#define REG_AGC_TOP  0x14 // the lowest gain of the AGC table (the values: fd6818_chip_t, AM BK4819_InitAGC(true))
 #define REG_AGC_THR  0x49 // the AGC thresholds
-#define AGC_TOP_FM   0x0019
-#define AGC_THR_FM   0x2A38
-#define AGC_TOP_AM   0x0000
-#define AGC_THR_AM   ((50 << 7) | 32) // BK4819_InitAGC(true)
 
 #define CTCSS_SCALE 20649 // register = Hz * 20.64888 (the DCS bit rate 134.4 Hz is 0x0AD7)
 #define DCS_TONE    0x0AD7
@@ -156,6 +152,102 @@ static const fd6818_setting_t fm_settings[] = {
     {0x7E, 0x302E}, {0x2B, 0xC000}, {0x43, 0x3028}, {0x07, 0x0470}, {0x07, 0x21CE}, {0x51, 0x0000},
     {0x3F, 0x0000}, {0x37, 0x1F0F}, {0x50, 0x3B20}, {0x30, 0xBFF1}, {0x47, 0x6042}, {0x48, 0xBBBF},
 };
+
+/* The FD6818B (chip ID 0x4829, a BK4829; the FD6818 is 0x4819, a BK4819): the newer DM-32 batches (#162). The same
+   tables with its values, as the BK4829 drivers set them (armel/uv-k1-k5v3-firmware-custom App/driver/bk4829.c,
+   Apache-2.0; the same values in the UV-K61 firmwares' FD6818B drivers): 0x37 bit 15, the AGC (0x10 - 0x14, 0x49,
+   0x7B), 0x1F / 0x3E the PLL and VCO bias (the FD6818's left the B chip off frequency), 0x2A; the power on table also
+   0x1C - 0x1E, 0x19, 0x28, 0x29, 0x2C, 0x53, 0x46, 0x4A and 0x36 (the PA gains as the FD6818 has them on the DM-32)
+   */
+
+static const fd6818_setting_t init_settings_b[] = {
+    {0x00, 0x8000}, {0x00, 0x0000}, {0x37, 0x9D0F}, {0x13, 0x03DF}, {0x12, 0x03DB}, {0x11, 0x033A}, {0x10, 0x0318},
+    {0x14, 0x0210}, {0x49, 0x2AB2}, {0x7B, 0x73DC}, {0x48, 0x33EF}, {0x1F, 0xC65A}, {0x25, 0xC1BA}, {0x77, 0x88EF},
+    {0x3E, 0x94C6}, {0x13, 0x03DF}, {0x7D, 0xE35E}, {0xB3, 0xFF00}, {0x33, 0xFE00}, {0xB4, 0x0000}, {0x34, 0x0009},
+    {0xB3, 0xFE00}, {0x33, 0xFC00}, {0xB4, 0x0009}, {0x34, 0x0019}, {0x10, 0x0318}, {0x11, 0x033A}, {0x12, 0x03DB},
+    {0x13, 0x03DF}, {0x14, 0x0210}, {0x1F, 0xC65A}, {0x30, 0xBFF1}, {0x37, 0x9D1F}, {0x3E, 0x94C6}, {0x47, 0x0100},
+    {0x48, 0xBBBF}, {0x49, 0x2AB2}, {0x4E, 0x4708}, {0x4F, 0x302F}, {0x52, 0x028F}, {0x7B, 0x73DC}, {0x09, 0x006F},
+    {0x09, 0x106B}, {0x09, 0x2067}, {0x09, 0x3062}, {0x09, 0x4050}, {0x09, 0x5047}, {0x09, 0x603A}, {0x09, 0x702C},
+    {0x09, 0x8041}, {0x09, 0x9037}, {0x09, 0xA025}, {0x09, 0xB017}, {0x09, 0xC0E4}, {0x09, 0xD0CB}, {0x09, 0xE0B5},
+    {0x09, 0xF09F}, {0x1C, 0x07C0}, {0x1D, 0xE555}, {0x1E, 0x4C58}, {0x19, 0x1041}, {0x28, 0x0B40}, {0x29, 0xAA00},
+    {0x2A, 0x6600}, {0x2C, 0x1822}, {0x53, 0x2028}, {0x46, 0x600A}, {0x4A, 0x5430}, {0x36, 0x003F},
+};
+
+static const fd6818_setting_t post_init_settings_b[] = {
+    {0x47, 0x0000}, {0x13, 0x03DF}, {0x47, 0x6042}, {0x7E, 0x302E}, {0x2B, 0xC000}, {0x43, 0x3028}, {0x78, 0x6968},
+    {0x30, 0x0000}, {0x38, 0xBA00}, {0x39, 0x00DB}, {0x32, 0x0244}, {0x07, 0x0470}, {0x07, 0x21CE}, {0x51, 0x0000},
+    {0x3F, 0x0000}, {0x37, 0x9F0F}, {0x30, 0x0000}, {0x30, 0xBFF1}, {0x47, 0x6042}, {0x48, 0xBBBF},
+};
+
+static const fd6818_setting_t fm_settings_b[] = {
+    {0x31, 0x0000}, {0x42, 0x6F5A}, {0x2A, 0x6600}, {0x30, 0x0000}, {0x13, 0x03DF}, {0x47, 0x6042}, {0x7E, 0x302E},
+    {0x2B, 0xC000}, {0x43, 0x3028}, {0x07, 0x0470}, {0x07, 0x21CE}, {0x51, 0x0000}, {0x3F, 0x0000}, {0x37, 0x9F0F},
+    {0x50, 0x3B20}, {0x30, 0xBFF1}, {0x47, 0x6042}, {0x48, 0xBBBF},
+};
+
+static const fd6818_setting_t dmr_settings_b[] = {
+    {0x31, 0x0000}, {0x42, 0x6F5A}, {0x2A, 0x6600}, {0x47, 0x0000}, {0x30, 0x0000}, {0x13, 0x03DF}, {0x47, 0x0140},
+    {0x48, 0xBBBF}, {0x7E, 0x303F}, {0x2B, 0x0700}, {0x43, 0x4048}, {0x78, 0x6968}, {0x30, 0x0000}, {0x37, 0x9F1F},
+    {0x50, 0xBB20}, {0x30, 0x0000}, {0x30, 0xBFF1}, {0x47, 0x0140}, {0x3F, 0x0000}, {0xC7, 0x0140}, {0x47, 0x0140},
+};
+
+// The values of each chip: its tables, and the ones the functions write
+typedef struct {
+    uint16_t id; // register 0x00
+    const fd6818_setting_t *init, *post_init, *fm, *dmr;
+    uint8_t init_count, post_init_count, fm_count, dmr_count;
+    uint16_t tx_37;                  // 0x37, fd6818_transmit_prepare()
+    uint16_t dmr_37_tx, dmr_37_rx;   // 0x37, each DMR burst
+    uint16_t agc_top_fm, agc_thr_fm; // 0x14, 0x49 (fd6818_set_demod())
+    uint16_t agc_top_am, agc_thr_am;
+    uint16_t reg_2a_fm, reg_2a_am;   // 0x2A (fd6818_set_demod())
+} fd6818_chip_t;
+
+#define COUNT(table) ((uint8_t)(sizeof(table) / sizeof((table)[0])))
+
+static const fd6818_chip_t fd6818 = {
+    .id = 0x4819,
+    .init = init_settings,
+    .init_count = COUNT(init_settings),
+    .post_init = post_init_settings,
+    .post_init_count = COUNT(post_init_settings),
+    .fm = fm_settings,
+    .fm_count = COUNT(fm_settings),
+    .dmr = dmr_settings,
+    .dmr_count = COUNT(dmr_settings),
+    .tx_37 = 0x1D0F,
+    .dmr_37_tx = 0x1D0F,
+    .dmr_37_rx = 0x1F1F,
+    .agc_top_fm = 0x0019,
+    .agc_thr_fm = 0x2A38,
+    .agc_top_am = 0x0000,
+    .agc_thr_am = (50 << 7) | 32, // BK4819_InitAGC(true)
+    .reg_2a_fm = 0x7400,
+    .reg_2a_am = 0x7434,
+};
+
+static const fd6818_chip_t fd6818b = {
+    .id = 0x4829,
+    .init = init_settings_b,
+    .init_count = COUNT(init_settings_b),
+    .post_init = post_init_settings_b,
+    .post_init_count = COUNT(post_init_settings_b),
+    .fm = fm_settings_b,
+    .fm_count = COUNT(fm_settings_b),
+    .dmr = dmr_settings_b,
+    .dmr_count = COUNT(dmr_settings_b),
+    .tx_37 = 0x9D0F,
+    .dmr_37_tx = 0x9D0F,
+    .dmr_37_rx = 0x9F1F,
+    .agc_top_fm = 0x0210,
+    .agc_thr_fm = 0x2AB2,
+    .agc_top_am = 0x0210, // the same as FM (the BK4829 drivers)
+    .agc_thr_am = 0x2AB2,
+    .reg_2a_fm = 0x6600,
+    .reg_2a_am = 0x6600,
+};
+
+static const fd6818_chip_t *chip = &fd6818;
 
 // The band registers 0x1A / 0x40 by frequency (FD6818_SelBand_Reg1A()), from the top
 static const struct {
@@ -267,8 +359,6 @@ static void write_table(const fd6818_setting_t *settings, int count)
     }
 }
 
-#define WRITE_TABLE(table) write_table((table), (int)(sizeof(table) / sizeof((table)[0])))
-
 /* Set up */
 
 void fd6818_init(void)
@@ -278,12 +368,20 @@ void fd6818_init(void)
     gpio_output(PIN_SDA, false);
     gpio_output(PIN_SCL, false);
     gpio_output(PIN_SCN, true);
-    WRITE_TABLE(init_settings);
+    fd6818_write(0x00, 0x8000); // the reset, then the chip's ID
+    fd6818_write(0x00, 0x0000);
+    chip = (fd6818_read(0x00) == fd6818b.id) ? &fd6818b : &fd6818;
+    write_table(chip->init, chip->init_count);
+}
+
+uint16_t fd6818_chip_id(void)
+{
+    return chip->id;
 }
 
 void fd6818_post_init(void)
 {
-    WRITE_TABLE(post_init_settings);
+    write_table(chip->post_init, chip->post_init_count);
     if_default = fd6818_read(REG_IF);
     reg_2f_default = fd6818_read(0x2F);
 }
@@ -292,7 +390,7 @@ void fd6818_post_init(void)
 void fd6818_set_fm(uint8_t rx_volume)
 {
     dmr = false;
-    WRITE_TABLE(fm_settings);
+    write_table(chip->fm, chip->fm_count);
     fd6818_write(REG_VOLUME, 0x31E0 | (rx_volume & 0x0F));
     fd6818_set_demod(FD6818_DEMOD_FM);
 }
@@ -316,11 +414,11 @@ void fd6818_set_demod(fd6818_demod_t new_demod)
     fd6818_write(REG_AFC, (uint16_t)(fd6818_read(REG_AFC) | AFC_OFF));
     fd6818_write(0x31, (uint16_t)((fd6818_read(0x31) & ~1u) | (am ? 1u : 0u)));
     fd6818_write(0x42, am ? 0x6F5C : 0x6F5A);
-    fd6818_write(0x2A, am ? 0x7434 : 0x7400);
+    fd6818_write(0x2A, am ? chip->reg_2a_am : chip->reg_2a_fm);
     fd6818_write(0x2B, am ? 0x0600 : 0xC000);
     fd6818_write(0x2F, am ? 0x9990 : reg_2f_default);
-    fd6818_write(REG_AGC_TOP, am ? AGC_TOP_AM : AGC_TOP_FM);
-    fd6818_write(REG_AGC_THR, am ? AGC_THR_AM : AGC_THR_FM);
+    fd6818_write(REG_AGC_TOP, am ? chip->agc_top_am : chip->agc_top_fm);
+    fd6818_write(REG_AGC_THR, am ? chip->agc_thr_am : chip->agc_thr_fm);
 }
 
 // AT1846sSetMode(RADIO_MODE_DIGITAL)
@@ -332,7 +430,7 @@ void fd6818_set_dmr(void)
     // (2026-11-21)
     fd6818_set_demod(FD6818_DEMOD_FM);
     dmr = true;
-    WRITE_TABLE(dmr_settings);
+    write_table(chip->dmr, chip->dmr_count);
 }
 
 /* Frequency, receive, transmit */
@@ -371,7 +469,7 @@ void fd6818_transmit_prepare(void)
 {
     fd6818_write(0x3F, 0x0000);
     fd6818_write(0x40, 0x34EA);
-    fd6818_write(0x37, 0x1D0F);
+    fd6818_write(0x37, chip->tx_37);
 }
 
 void fd6818_transmit(bool wide)
@@ -384,8 +482,6 @@ void fd6818_transmit(bool wide)
 /* DMR, each Tx burst, as the stock firmware's RF task (DM32.01.L01.048): only the frequency words change, the audio
    out and the raw baseband (0x50 bit 15) are off while transmitting */
 
-#define DMR_37_TX    0x1D0F
-#define DMR_37_RX    0x1F1F
 #define DMR_50_TX    0x3B18 // stock 0x2b5a8
 #define DMR_50_RX    0xBB20 // the raw baseband to the HR_C7000 (dmr_settings[])
 #define DMR_AF_RX    0x0140
@@ -403,7 +499,7 @@ void fd6818_dmr_burst_tx(uint32_t frequency)
     frequency_words(frequency);
     fd6818_write(REG_CONTROL, CONTROL_IDLE);
     fd6818_write(REG_AF, fd6818_read(REG_AF) & (uint16_t)~AF_OUT_MASK);
-    fd6818_write(0x37, DMR_37_TX);
+    fd6818_write(0x37, chip->dmr_37_tx);
     fd6818_write(0x52, 0x028F);
     fd6818_write(REG_CONTROL, CONTROL_IDLE);
     fd6818_write(REG_CONTROL, CONTROL_TX);
@@ -416,7 +512,7 @@ void fd6818_dmr_burst_rx(uint32_t frequency)
     fd6818_write(REG_CONTROL, CONTROL_IDLE);
     frequency_words(frequency);
     fd6818_write(0x32, 0x0244);
-    fd6818_write(0x37, DMR_37_RX);
+    fd6818_write(0x37, chip->dmr_37_rx);
     fd6818_write(REG_CONTROL, CONTROL_IDLE);
     fd6818_write(REG_CONTROL, CONTROL_RX);
     fd6818_write(REG_AF, DMR_AF_RX);

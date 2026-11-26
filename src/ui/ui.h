@@ -131,6 +131,12 @@ void ui_push(const ui_screen_t *screen, void *arg);
 void ui_pop(void);
 void ui_replace(const ui_screen_t *screen, void *arg);
 void ui_home(void);
+// fn(arg) done as by the screen under the one on top (the dual watch over the channel or VFO screen gives it the keys
+// of its selected path): the top one is left and taken off meanwhile, then put back without its enter when the same
+// screen is under it again with nothing over it and keep() says so. true: put back (it goes on: its timer, ...);
+// false: another screen is on top now (fn pushed a menu, or replaced the screen: its enter may push the top one again)
+bool ui_under(bool (*fn)(void *arg), void *arg, bool (*keep)(void));
+bool ui_handle_under(const ui_event_t *ev, bool (*keep)(void)); // ui_under() with that screen's handle(ev)
 // The channel of the screens (the first from the top that has one) to the radio, which takes the same one again
 // without a change. The UI task does it after each event; before a transmission it is done at once (tx_screen.c)
 void ui_tune(void);

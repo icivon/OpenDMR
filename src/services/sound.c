@@ -365,10 +365,16 @@ void sound_play_dtmf(uint16_t low, uint16_t high)
     }
 }
 
+// Silent: no beep at all, the keys' and the prompts' (the 1750 Hz heard while sending it is no prompt); no key beep:
+// the prompts only
 void sound_play(const int16_t *melody)
 {
-    if (((melody == SOUND_KEY) || (melody == SOUND_KEY_LONG)) &&
-        (settings.audio_prompt_mode == SOUND_PROMPT_NO_KEY_BEEP)) {
+    bool key = (melody == SOUND_KEY) || (melody == SOUND_KEY_LONG) || (melody == SOUND_KEY_FIRST_ITEM);
+
+    if ((melody != NULL) && (melody != SOUND_1750) && (settings.audio_prompt_mode == SOUND_PROMPT_SILENT)) {
+        return;
+    }
+    if (key && (settings.audio_prompt_mode == SOUND_PROMPT_NO_KEY_BEEP)) {
         return;
     }
     sound_play_volume(melody, 0xFF);
@@ -403,7 +409,7 @@ void sound_play_boot(void)
     }
     if ((custom_data_find(CUSTOM_DATA_TYPE_BEEP, &length) == 0) || (length > sizeof(data)) ||
         !custom_data_read(CUSTOM_DATA_TYPE_BEEP, data, length)) {
-        sound_play(SOUND_POWER_ON);
+        sound_play_volume(SOUND_POWER_ON, 0xFF); // its own option, silent or not
         return;
     }
     for (uint32_t i = 0; ((i + 1) < length) && (data[i + 1] != 0); i += 2) { // soundCreateSong()
@@ -413,7 +419,7 @@ void sound_play_boot(void)
     boot_melody[count] = -1;
     boot_melody[count + 1] = -1;
     if (count > 0) {
-        sound_play(boot_melody);
+        sound_play_volume(boot_melody, 0xFF);
     }
 }
 

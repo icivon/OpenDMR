@@ -364,6 +364,7 @@ const char *const text_en[TEXT_COUNT] = {
     [TEXT_MENU_PLACES] = "Keep menu places",
     [TEXT_UI_RX_MODE_HINT] = "Switch to FM or DMR",
     [TEXT_TALKER_BEEP] = "Talker beep",
+    [TEXT_TALKER_BOTH_ENDS] = "Talker+start",
     [TEXT_FM_TX_TONES] = "FM Tx tones",
     [TEXT_AIR_START] = "Air start",
     [TEXT_AIR_END] = "Air end",
