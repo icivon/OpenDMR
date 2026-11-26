@@ -2,9 +2,10 @@
  * Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
  * Redistribution and use: see LICENSE (BSD-style, non-commercial without written permission).
  *
- * DM-36 board map. Same screen (240x320 ST7789 / I8080), same HR_C7000 SoC,
- * same FD6818B RF chip, same external flashes as the DM-32UV. No GPS, no
- * separate P1/P2 keys (SK1/SK2 are the side keys in this firmware).
+ * DM-36 board map. Same screen (240x320 ST7789 / I8080), same HR_C7000 SoC
+ * and external flashes as the DM-32UV. RF is FD6818B (BK4829, ID 0x4829);
+ * DM-32UV is FD6818 (BK4819, ID 0x4819). No GPS, no separate P1/P2 keys
+ * (SK1/SK2 are the side keys in this firmware).
  *
  * Start from the DM-32 map and override only what is known to differ. Entries
  * marked TODO(DM36) still carry the DM-32 value: they are the first things to
