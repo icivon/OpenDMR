@@ -31,7 +31,7 @@ def main():
         p = line.split()
         if len(p) == 3:
             sym[p[2]] = int(p[0], 16)
-    radio = dm32dbg.Radio(os.environ.get('DM32_PORT', 'COM6'))
+    radio = dm32dbg.Radio(os.environ.get('DM32_PORT', '/dev/ttyUSB0'))
     scratch = sym['rx_frames']
 
     def post(kind, key=0, modifiers=0, long_press=False, steps=0):

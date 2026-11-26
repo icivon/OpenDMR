@@ -31,10 +31,16 @@
  *   matrix          physical key     logical key
  *     0  (r0c0)     *                KEYS_STAR       (15)
  *     4  (r1c0)     0                KEYS_0          (14)
+ *     8  (r2c0)     #                KEYS_HASH       (13)  (was RIGHT; DM36 has no right key)
  *    12  (r3c0)     Menu             KEYS_GREEN      (0)   menu / OK
  *    13  (r3c1)     Up               KEYS_FRONT_UP   (16)
  *    14  (r3c2)     Down             KEYS_FRONT_DOWN (17)
  *    15  (r3c3)     Back             KEYS_RED        (12)
+ *
+ * 2026-11-26: the physical # key and the number keys are all reported at matrix
+ * position 8 on this board (the key-settings screen shows RIGHT for them).
+ * Position 8 is mapped to HASH here so the # key works; the number keys still
+ * need their own positions measured before they can be mapped correctly.
  */
 #undef  BOARD_KEY_INDEX
 #define BOARD_KEY_INDEX(index) dm36_key_index(index)
@@ -43,6 +49,7 @@ static inline int dm36_key_index(int index)
     switch (index) {
     case 0:  return KEYS_STAR;
     case 4:  return KEYS_0;
+    case 8:  return KEYS_HASH;
     case 12: return KEYS_GREEN;
     case 13: return KEYS_FRONT_UP;
     case 14: return KEYS_FRONT_DOWN;
@@ -63,6 +70,18 @@ static inline int dm36_key_index(int index)
 #define BOARD_KEY_COLUMNS     4
 #undef  BOARD_ROWS_AS_GPIO
 #define BOARD_ROWS_AS_GPIO    0xFE00UL
+
+/* Side buttons, measured on real hardware 2026-11-26 with the raw GPIO_EXT scan
+ * (tools/debug/dm36_keyscan.py, one key at a time):
+ *   SK1 = pin 37 (0x25), SK2 = pin 41 (0x29).
+ * They are NOT keypad columns here (the columns are pins 49-52), so read them
+ * directly instead of through the DM-32 column offset. PTT stays at pin 43:
+ * the stock firmware analysis initializes 43, see docs/dm36-stock-firmware-analysis.md.
+ */
+#undef  BOARD_PIN_SK1
+#define BOARD_PIN_SK1         37
+#undef  BOARD_PIN_SK2
+#define BOARD_PIN_SK2         41
 
 /* ---------------- model identity ---------------- */
 #undef  BOARD_NAME
