@@ -629,6 +629,14 @@ void radio_beep_path(bool on)
     beep_path = on;
     audio_switch();
     taskEXIT_CRITICAL();
+#if defined(BOARD_DM36)
+    // DM-36: the FD6818B's analog AF output shares the speaker node with the
+    // baseband prompt path.  With the inherited DM-32 register values its AF
+    // output is still driven while a beep plays, which is heard as a distorted
+    // ("broken") key beep.  Mute it for the duration of the prompt and restore
+    // it from the squelch state afterwards.  Same pattern as radio_broadcast_amp().
+    fd6818_af_out(!on && rs.has_carrier);
+#endif
 }
 
 void radio_beep_amp(bool on)

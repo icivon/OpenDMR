@@ -37,9 +37,10 @@
 #include "hal.h"
 #include "uart.h"
 
-// The two UARTs are the same 16550-like block
+// The UARTs are the same 16550-like block
 #define UART0_BASE 0x14030000 // the programming cable
 #define UART1_BASE 0x14040000 // the GPS module
+#define UART2_BASE 0x14090000 // DM-36: the LytLink Bluetooth module (stock firmware 0x3061a2e)
 #define UART_RBR(b) REG((b) + 0x00)
 #define UART_THR(b) REG((b) + 0x00)
 #define UART_DLL(b) REG((b) + 0x00)
@@ -169,3 +170,34 @@ void uart0_set_divisor(uint32_t divisor)
     UART_DLH(UART0_BASE) = (divisor >> 8) & 0xff;
     UART_LCR(UART0_BASE) &= ~(1 << 7);
 }
+
+#if defined(BOARD_DM36)
+// DM-36 only: the stock firmware drives the LytLink Bluetooth module on UART2 (0x14090000) at 115200 8N1,
+// polling the TX FIFO (USR bit 1) and receiving in its own task (no UART2 interrupt is registered in the stock
+// firmware).  The same 16550-like block as UART0 / UART1.
+void uart2_init(uint32_t baud, uart_rx_handler_t handler)
+{
+    (void)handler;
+    setup(UART2_BASE, baud);
+    UART_IER(UART2_BASE) = 0x00; // polled; the Bluetooth task calls uart2_read()
+}
+
+void RAM_CODE uart2_write(const uint8_t *data, uint32_t length)
+{
+    for (uint32_t i = 0; i < length; i++) {
+        while ((UART_USR(UART2_BASE) & 0x02) == 0) {
+            // transmit FIFO full
+        }
+        UART_THR(UART2_BASE) = data[i];
+    }
+}
+
+bool RAM_CODE uart2_read(uint8_t *c)
+{
+    if ((UART_LSR(UART2_BASE) & 0x01) == 0) {
+        return false;
+    }
+    *c = (uint8_t)UART_RBR(UART2_BASE);
+    return true;
+}
+#endif

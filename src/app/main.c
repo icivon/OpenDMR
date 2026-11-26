@@ -54,6 +54,7 @@
 #include "systime.h"
 #include "cable_link.h"
 #include "settings.h"
+#include "bluetooth.h"
 #include "language.h"
 #include "codeplug.h"
 #include "dmr_ids.h"
@@ -130,6 +131,9 @@ int main(void)
     input_start();
     radio_start();
     gps_start();
+#if defined(BOARD_DM36)
+    bluetooth_start(); // DM-36: the LytLink Bluetooth module on UART2
+#endif
     rx_capture_start(); // debug: the received AMBE frames to the flash
     sound_start();
     sound_play_boot();
