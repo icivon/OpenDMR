@@ -58,11 +58,7 @@
 #include "voice_play.h"
 
 #define PATH_SETTLE_MS 10 // the audio path switched, silence into the FIFO, before the amplifier goes on
-#if defined(BOARD_DM36)
-#define AMP_START_MS 120 // DM-36: its audio amplifier starts slower; 75 ms made the short key beeps distorted
-#else
-#define AMP_START_MS 75 // the amplifier on before the sound (DELAYED_BEEP_DURATION_MS)
-#endif
+#define AMP_START_MS   BOARD_AMP_START_MS // board hook: DM-32 75 ms, DM-36 120 ms (the board map)
 #define AMP_STOP_MS    20 // the amplifier off, before the audio path switches back
 #define BLOCK          (MODEM_BEEP_BLOCK / 2) // samples a block
 

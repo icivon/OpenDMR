@@ -29,7 +29,7 @@
 
 **现象反推**：开机屏幕正常 ⇒ CPU、时钟、程序 Flash XIP、屏驱动、framebuffer 全部正常。故障被收敛到两个纯板级层：**GPIO 引脚/mux（按键）** 与 **射频前端（收发）**。
 
-**射频芯片区分**：DM36 使用 **FD6818B / BK4829（ID `0x4829`）**，DM32 使用 **FD6818 / BK4819（ID `0x4819`）**。驱动已包含两套初始化表并在 `fd6818_init()` 中按寄存器 `0x00` 自动选择（`src/drivers/fd6818.c:156-240, 364-374`），因此芯片型号本身不是阻塞项；DM36 射频采集时应以 `0x4829` 为期望 ID。
+**射频芯片区分**：DM36 使用 **FD6818B / BK4829（ID `0x4829`）**，DM32 使用 **FD6818 / BK4819（ID `0x4819`）**。DM36 有独立的原厂寄存器表驱动 `src/board/dm36/fd6818_dm36.c`（DM36 构建时由 Makefile 替换共享 `src/drivers/fd6818.c`），DM36 下强制使用该表、不依赖 ID 读取；DM36 射频采集时应以 `0x4829` 为期望 ID。
 
 ---
 
@@ -123,7 +123,7 @@ FD6818 走 GPIO 软件 bit-bang（硬件 SPI0 专用于 25Q128）：
 
 **3) FD6818B 寄存器差异**
 
-DM36 是 FD6818B / BK4829（`0x4829`），DM32 是 FD6818 / BK4819（`0x4819`）；驱动已在 `fd6818_init()` 中读取寄存器 `0x00` 并自动选择对应初始化表（`src/drivers/fd6818.c:156-240, 364-374`）。DM36 采集时 `fdr 0x00` 应返回 `0x4829`；如果读到 `0x4819`、全 0 或全 `0xFF`，先查软 SPI 引脚/mux。
+DM36 是 FD6818B / BK4829（`0x4829`），DM32 是 FD6818 / BK4819（`0x4819`）；DM36 构建使用独立驱动 `src/board/dm36/fd6818_dm36.c`，`fd6818_init()` 强制选用原厂表、不依赖 ID 读取（DM32 仍沿用共享 `fd6818.c` 的 ID 自动选择）。DM36 采集时 `fdr 0x00` 应返回 `0x4829`；如果读到 `0x4819`、全 0 或全 `0xFF`，先查软 SPI 引脚/mux。
 
 `docs/fd6818-registers.md:32-36` 已有跨机型差异证据：另一台机 `0x47` 高位为 `0x7840/0x7040`，本机为 `0x6042/0x6142`。DMR 关键位：`0x50=0xBB20`（bit15 把原始基带送 HR_C7000，否则无 DMR 同步）、`0x43=0x4048`（DMR 带宽），见 `src/drivers/fd6818.c:188-192`。
 
@@ -601,19 +601,21 @@ ui.c -> sound.c: SOUND_KEY {600 Hz, 60 ms}
    而 DM36 的射频是 **FD6818B / BK4829**，初始化表按芯片 ID `0x4829` 自动切换（`fd6818.c`）。原厂 DM36 固件在音频模式切换时成对写 FD6818 `0x2E/0x2F`（`0x8608/0x1890` 与 `0x9608/0x9890`），OpenDMR 驱动只写 `0x2F` 且仅用于 AM，DM36 上 FD6818B 的模拟 AF 输出没有被显式静音；它与基带提示音叠加后就是听到的“破音”。
 3. `voice_play.c` 的放大器启动等待是 DM32 调出的 `75 ms`。DM36 的功放启动更慢，而 `SOUND_KEY` 本身只有 `60 ms`，起始失真会覆盖整声按键音。
 
-**修复**（均为 DM36 条件编译，DM32 构建逐值等价）：
+**修复**（板级钩子，共享源文件只加一行，DM32 构建逐值等价）：
 
 | 文件 | 改动 |
 |---|---|
-| `src/services/radio_rx.c` | `radio_beep_path()` 在 `BOARD_DM36` 下调用 `fd6818_af_out(!on && rs.has_carrier)`：提示音期间静音 FD6818B 的 AF 输出，结束后按 squelch 状态恢复；与 `radio_broadcast_amp()` 的已有做法一致。 |
-| `src/services/voice_play.c` | `BOARD_DM36` 下 `AMP_START_MS` 由 `75` 提高到 `120`，给 DM36 功放更多启动时间；新增 `board.h` 包含以取得板级宏。 |
+| `src/board/board.h` | 新增默认钩子 `BOARD_BEEP_PATH_AF_OUT(on,carrier)=((void)0)`、`BOARD_AMP_START_MS=75`（DM32 默认）。 |
+| `src/board/board_dm36.h` | 覆盖为 `fd6818_af_out(!on && carrier)` 与 `120 ms`。 |
+| `src/services/radio_rx.c` | `radio_beep_path()` 末尾增加一行 `BOARD_BEEP_PATH_AF_OUT(on, rs.has_carrier)`：提示音期间静音 FD6818B 的 AF 输出，结束后按 squelch 状态恢复；与 `radio_broadcast_amp()` 的已有做法一致。 |
+| `src/services/voice_play.c` | `AMP_START_MS` 改用板级宏 `BOARD_AMP_START_MS`；新增 `board.h` 包含。 |
 
 **编译验证**：
 
 ```text
-make clean; make CROSS=csky-elf-noneabiv2- BOARD=36
-BUILD_EXIT=0
-text 731184 / data 3444 / bss 322404
+make clean; make CROSS=csky-abiv2-elf- BOARD=dm36
+DM36_EXIT=0，无警告
+text 731512 / data 3444 / bss 323640
 src/build/opendmr_dm36.bin
 ```
 
@@ -653,7 +655,7 @@ DMR 模式表（`0x0300f26e`）同样不同：原厂写 `0x43=0x0048`（OpenDMR 
 
 **结论**：DM36 无法收发的根本原因是 **OpenDMR 的 FD6818B 表不是 DM36 的值**。PLL/VCO 寄存器（`0x1C/0x1D/0x1F/0x25`）错误会使频率合成器无法锁定，表现为完全收不到也发不出。此外 `fd6818_init()` 依赖读寄存器 `0x00` 判断芯片型号，而原厂固件复位后直接写表、从不读 ID——ID 识别若失败会进一步选错成 FD6818（DM32）表。
 
-**修复**（`src/drivers/fd6818.c`，全部 `#if defined(BOARD_DM36)`，DM32 行为不变）：
+**修复**（全部在独立文件 `src/board/dm36/fd6818_dm36.c`，DM36 构建时替换共享 `fd6818.c`，共享 `drivers/fd6818.c` 与上游完全一致）：
 
 | 项 | 改动 |
 |---|---|
@@ -667,9 +669,9 @@ DMR 模式表（`0x0300f26e`）同样不同：原厂写 `0x43=0x0048`（OpenDMR 
 **编译验证**：
 
 ```text
-make clean; make CROSS=csky-elf-noneabiv2- BOARD=36
-BUILD_EXIT=0
-text 731072 / data 3444 / bss 322404
+make clean; make CROSS=csky-abiv2-elf- BOARD=dm36
+DM36_EXIT=0，无警告
+text 731512 / data 3444 / bss 323640
 ```
 
 **实机验证步骤**：
@@ -697,12 +699,12 @@ text 731072 / data 3444 / bss 322404
 | PTT | `PTTKEY`、`PTTBATT`、`3900mV` … `3300mV` |
 | 写频/透传 | `AT+DATA=00,<n>`、`AT+ADATA=01,<n>`、`+DATA:00`、`+ADATA:00` |
 
-**实现**（全部 DM36 条件编译，DM32 构建逐值等价）：
-- `src/drivers/uart.c/.h`：新增 UART2 驱动（`uart2_init/uart2_write/uart2_read`，115200 8N1，轮询收发，无中断）。
-- `src/services/bluetooth.c/.h`：新增蓝牙服务，启动时发 `AT+VER?` / `AT+AUTOCONN?`，解析 `CONN`/`DISC` 维护链路状态；提供 `bluetooth_audio()`（AGHF/SPKEN/MICEN/AUDIO）与 `bluetooth_write_data()`（AT+DATA 透传）。
-- `src/app/main.c`：DM36 下 `bluetooth_start()`。
+**实现**（全部集中在 `src/board/dm36/`，DM36 构建才编译，DM32 不收集；共享源与上游完全一致）：
+- `src/board/dm36/uart2_dm36.c/.h`：DM36 专属 UART2 驱动（`uart2_init/uart2_write/uart2_read`，115200 8N1，轮询收发，无中断）。
+- `src/board/dm36/bluetooth.c/.h`：蓝牙服务，启动时发 `AT+VER?` / `AT+AUTOCONN?`，解析 `CONN`/`DISC` 维护链路状态；提供 `bluetooth_audio()`（AGHF/SPKEN/MICEN/AUDIO）与 `bluetooth_write_data()`（AT+DATA 透传）。
+- `bluetooth_start()` 在 `src/board/dm36/fd6818_dm36.c` 的 `fd6818_init()` 中调用，共享 `main.c` 不改动。
 
-**编译验证**：DM32 与 DM36 均 `BUILD_EXIT=0`；DM36 固件已重新生成。
+**编译验证**：DM32 与 DM36 均 `EXIT=0`、无警告；DM36 固件已重新生成。
 
 **仍待实机/后续**：
 1. 蓝牙音频最终要经过音频开关/功放路由到蓝牙模块的模拟音频脚；当前服务只完成模块的 HFP/SPK/MIC 控制，音频开关的具体 GPIO 需实测确认后接入。

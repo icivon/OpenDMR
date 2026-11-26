@@ -16,4 +16,13 @@
 #include "board_dm32.h"
 #endif
 
+/* Board hooks with DM-32 defaults. DM-36 overrides them in board_dm36.h, so
+ * the shared .c files need only a one-line call and upstream merges stay small. */
+#ifndef BOARD_BEEP_PATH_AF_OUT
+#define BOARD_BEEP_PATH_AF_OUT(on, carrier) ((void)0)
+#endif
+#ifndef BOARD_AMP_START_MS
+#define BOARD_AMP_START_MS 75
+#endif
+
 #endif

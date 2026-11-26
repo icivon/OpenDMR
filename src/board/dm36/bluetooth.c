@@ -36,7 +36,7 @@
 
 #include "hal.h"
 #include "bluetooth.h"
-#include "uart.h"
+#include "uart2_dm36.h"
 
 #define BT_UART_BAUD      115200
 #define BT_RX_LINE        128
@@ -105,7 +105,7 @@ void bluetooth_start(void)
     if (task) {
         return;
     }
-    uart2_init(BT_UART_BAUD, NULL);
+    uart2_init(BT_UART_BAUD);
     task = xTaskCreateStatic(bt_task, "bluetooth", sizeof(task_stack) / sizeof(task_stack[0]), NULL,
                              tskIDLE_PRIORITY + 3, task_stack, &task_tcb);
 }

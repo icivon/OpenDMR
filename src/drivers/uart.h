@@ -44,11 +44,4 @@ uint32_t uart0_divisor(uint32_t baud);    // the divisor of a baud rate
 void uart1_init(uint32_t baud, uart_rx_handler_t handler);
 void uart1_receive(bool on);
 
-// UART2 (DM-36 only): the LytLink Bluetooth module, 115200 8N1
-#if defined(BOARD_DM36)
-void uart2_init(uint32_t baud, uart_rx_handler_t handler);
-void uart2_write(const uint8_t *data, uint32_t length);
-bool uart2_read(uint8_t *c); // one received byte, false when the FIFO is empty
-#endif
-
 #endif

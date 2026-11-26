@@ -61,6 +61,12 @@ static inline int dm36_key_index(int index)
 #undef  BOARD_HAS_GPS
 #define BOARD_HAS_GPS         0
 
+/* DM-36 audio quirks: the FD6818B AF output shares the speaker node with the
+ * baseband beep path; mute it while a prompt plays. Its amplifier also starts
+ * slower than the DM-32's. */
+#define BOARD_BEEP_PATH_AF_OUT(on, carrier) fd6818_af_out(!(on) && (carrier))
+#define BOARD_AMP_START_MS      120
+
 /*
  * TODO(DM36) - measured values go here. Each group was identified by static
  * analysis as DM-32-specific; any of them can differ on the DM-36.

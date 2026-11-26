@@ -115,8 +115,8 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
 
 ### 2.3 已应用的修复（避免重复排查）
 
-- `src/drivers/fd6818.c`：新增 DM36 专属 init/post-init/FM/DMR 表；`fd6818_init()` 在 DM36 下不读 ID；
-  `BANDWIDTH_DMR` 在 DM36 下改为 `0x0048`。
+- `src/board/dm36/fd6818_dm36.c`：DM36 专属 FD6818 驱动（独立文件），含原厂 init/post-init/FM/DMR 表；
+  `fd6818_init()` 在 DM36 下不读 ID、`BANDWIDTH_DMR=0x0048`；DM36 构建时由 Makefile 替换共享 `fd6818.c`。
 - `docs/dm36-porting.md` 第 10.7 节记录了差异表与编译结果。
 
 ---
@@ -129,7 +129,9 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
   与 OpenDMR `modem_beep()` 一致。
 - 原厂音频模式切换会成对写 FD6818 `0x2E/0x2F`（见 2.2），OpenDMR 原先未覆盖；DM36 的 FD6818B AF 输出
   未被静音，与基带提示音叠加⇒破音。
-- 已修：`radio_beep_path()` 在 DM36 下静音 FD6818 AF；`AMP_START_MS` 从 75 ms 提到 120 ms（DM36 功放启动更慢）。
+- 已修：通过 `board.h` / `board_dm36.h` 的 `BOARD_BEEP_PATH_AF_OUT` 钩子，`radio_beep_path()` 在 DM36 下静音
+  FD6818 AF；`BOARD_AMP_START_MS` 把 `AMP_START_MS` 从 75 ms 提到 120 ms（DM36 功放启动更慢）。
+  DM32 构建中两个钩子为默认空/75 ms，共享源文件只有一行钩子调用。
 
 ---
 
@@ -166,11 +168,11 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
 
 ### 4.4 已实现与待办
 
-已实现（DM36 条件编译，DM32 构建为空）：
-- `src/drivers/uart.c/.h`：`uart2_init/uart2_write/uart2_read`
-- `src/services/bluetooth.c/.h`：启动发 `AT+VER?`/`AT+AUTOCONN?`，解析 `CONN/DISC`，
+已实现（全部集中在 `src/board/dm36/`，DM36 构建才编译，DM32 不收集）：
+- `src/board/dm36/uart2_dm36.c/.h`：`uart2_init/uart2_write/uart2_read`
+- `src/board/dm36/bluetooth.c/.h`：启动发 `AT+VER?`/`AT+AUTOCONN?`，解析 `CONN/DISC`，
   `bluetooth_audio()` 与 `bluetooth_write_data()` 接口
-- `src/app/main.c`：DM36 下 `bluetooth_start()`
+- `bluetooth_start()` 在 DM36 独立的 `fd6818_dm36.c` 中调用，共享 `main.c` 与上游完全一致
 
 **待人工/实机**：
 1. 音频：模块模拟音频脚与音频开关/功放的 GPIO 路由尚未接入；现只完成模块的 HFP/SPK/MIC 控制命令。
@@ -210,5 +212,6 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
 | `docs/dm36-porting.md` | 移植流程与实测结果（10.3 校准、10.6 按键音、10.7 FD6818B、10.8 蓝牙） |
 | `docs/dm36-stock-fd6818-writes.md` | 原厂 231 条 FD6818 寄存器写入完整列表（VMA/reg/value） |
 | `docs/fd6818-registers.md` | BK4819/BK4829 寄存器含义参考 |
-| `src/drivers/fd6818.c` | 已应用的 DM36 专属寄存器表 |
-| `src/services/bluetooth.c` | 已实现的 LytLink AT 命令框架 |
+| `src/board/dm36/fd6818_dm36.c` | 已应用的 DM36 专属寄存器表（独立驱动） |
+| `src/board/dm36/bluetooth.c` | 已实现的 LytLink AT 命令框架 |
+| `src/board/dm36/uart2_dm36.c/.h` | DM36 专属 UART2 蓝牙链路驱动 |
