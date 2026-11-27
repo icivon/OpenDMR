@@ -328,7 +328,7 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
     // The mic to the FD6818 for FM (high), to the modem's codec for DMR (low), set with the mode as the stock firmware
     // does: switched at each DMR transmission, it put a DC step and a click (to -32000) into the first 100 ms of the
     // capture, sent as a pop at the start of every transmission
-    gpio_output(PIN_MIC_MUT, is_analog());
+    gpio_output(PIN_MIC_MUT, is_analog() ? PIN_MIC_MUT_TO_FD6818 : PIN_MIC_MUT_TO_MODEM);
     memset(samples, 0, sizeof(samples));
     signal_shown = 0;
     if (rs.dmr_running && (!rs.has_channel || is_analog())) {

@@ -44,7 +44,7 @@
 // the receive digital gain 9 and the mic step table 31/34/38/41/44 (RadioFoundry's set-up B, the DM-32's newer RF
 // section: docs/spec/hardware-dm32.md 8.10; their boards/dm32/radio_dm32.c writes 0xE92C on it).
 #define MIC_GAIN_BASE    0xE900 // the receive digital gain 9
-#define MIC_GAIN_DEFAULT 0xE92C // as the set-up B: the mic step 44
+#define MIC_GAIN_DEFAULT 0xE90D // the stock DM-36's table entry 2 (see set_mic_gain())
 
 // Power on: the DM-36 stock firmware's FD6818B init (0x0300ed96), value by value
 static const fd68xx_setting_t init_settings[] = {
@@ -155,11 +155,13 @@ static void set_bandwidth(trx_bandwidth_t bandwidth)
     trx_spi_write(0x43, values[bandwidth]);
 }
 
-// The mic gain (0x7D): the FD6818B's encoding. The setting (0..31) as the FD6818's five steps (22/24/26/28/30)
-// are, so the stock's default (26) the middle one (38), as there (26).
+// The mic gain (0x7D): the FD6818B's encoding. The steps are the stock DM-36's own table, read from its firmware
+// (0x03079468: 0x0B, 0x0C, 0x0D, 0x0F, 0x11 - 11/12/13/15/17 above the 0xE900 base), NOT the FD6818's
+// 22/24/26/28/30 nor the set-up B values 31/34/38/41/44 that were used here: those are some 4 dB hotter, which is
+// why FM transmit came out far too loud. The setting (0..31) picks one of the five, as on the stock (26 -> the middle).
 static void set_mic_gain(uint8_t gain)
 {
-    static const uint16_t steps[] = {31, 34, 38, 41, 44};
+    static const uint16_t steps[] = {11, 12, 13, 15, 17};
     uint8_t index = (gain >= 30) ? 4 : (gain >= 28) ? 3 : (gain >= 26) ? 2 : (gain >= 24) ? 1 : 0;
 
     trx_spi_write(0x7D, (uint16_t)(MIC_GAIN_BASE | steps[index]));

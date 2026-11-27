@@ -128,7 +128,7 @@ void transmit_on(void)
     trx_transmit_prepare();
     trx_set_mic_gain(settings.mic_gain_fm); // the FM mic goes to the FD6818 (the codec gain is the DMR one)
     modem_fm_transmit(wide, settings.mic_gain_fm);
-    gpio_output(PIN_MIC_MUT, true); // the mic to the FD6818 (low: to the modem, DMR)
+    gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_FD6818); // the mic to the FD6818 (the board may invert it, hw.h)
     trx_transmit(wide);
     gpio_output((tx >= UHF_FROM) ? PIN_PA_UHF : PIN_PA_VHF, true);
     modem_pa_drive(pa_drive(tx));

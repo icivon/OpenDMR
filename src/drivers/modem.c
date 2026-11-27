@@ -117,8 +117,9 @@ void modem_init(void)
     CR_VIC = 0x0C;
     CR_CK = 0x40;
     GCR_DACL = 0x87;
-    GCR_MIC1 = 0x05; // the DMR mic's analog boost, 20 dB, with the DMR mic gain (GCR_ADCL) at 16 dB: words at about
-                     // -25 dBFS, peaks -11 (tools/debug/miclevel.py); at 0 dB they were about -50, sent too quiet
+    GCR_MIC1 = BOARD_MIC_ANALOG_BOOST; // the mic's analog boost (4 dB a step), with the DMR mic gain (GCR_ADCL) at
+                                       // 16 dB: words at about -25 dBFS, peaks -11 (tools/debug/miclevel.py); at 0 dB
+                                       // they were about -50, sent too quiet. A board with a hotter microphone lowers it
     GCR_ADCL = 0x8B;
     CR_DAC_AGC = 0x00;
     CR_ADC_AGC = 0x00;

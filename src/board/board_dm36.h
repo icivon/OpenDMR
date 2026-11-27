@@ -25,6 +25,27 @@
 #include "keys.h"
 #include "trx_driver.h"
 
+/* ---------------- microphone selector ----------------
+ * PIN_MIC_MUT (0x2E, GPIOB bit 14) is inherited from the DM-32 map, where 1 sends the
+ * mic to the FD6818 (analog FM) and 0 to the HR_C7000 modem (DMR and the other digital
+ * modes). Neither route carries audio on the DM-36 with that assignment: FM transmits an
+ * unmodulated carrier and every digital mode sends silence while the signalling (DMR ID,
+ * slot, colour code, talk group) still arrives. That is the signature of a selector that
+ * is inverted on this board, so both modes were driving the *other* chip's input.
+ *
+ * The stock DM-36 firmware sets pad 46 to 0 in its GPIO init (0x03001C4A0: pins 46 and
+ * 47 both to 0), whereas the DM-32-derived init here drives it to 1 - the other level.
+ *
+ * If a mode still has no audio with this, remove the define: the pin itself is then the
+ * wrong one and has to be measured on the board (docs/dm36-porting.md 1.1, item 4/6).
+ */
+#define BOARD_MIC_MUT_INVERTED 1
+
+/* The mic into the codec (DMR / NXDN / M17 / P25) is loud on this board with the DM-32's 20 dB analog boost: the
+ * reports are a signal that is too loud at the other end. One step down (16 dB). The DMR mic gain itself is the
+ * "DMR mic" sound option (settings.mic_gain_dmr, 0..20 dB, 16 by default), the FM one "FM mic". */
+#define BOARD_MIC_ANALOG_BOOST 0x04
+
 /* ---------------- keypad wiring (measured on real hardware, 2026-11-25) ----------------
  * The DM-36 matrix is wired differently: the physical keys sit at other row/column
  * positions than on the DM-32. Translate each measured position to the logical key

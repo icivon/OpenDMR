@@ -289,7 +289,7 @@ static void rf_task_main(void *arg)
             trx_set_frequency(rs.channel.tx_freq, false);
             trx_transmit_prepare();
             dmr_modem_calibration();
-            gpio_output(PIN_MIC_MUT, false);
+            gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_MODEM);
         }
         if ((asked & RF_SETUP) && pa_later) {
             pa_later = false;

@@ -84,7 +84,7 @@ void pins_init(void)
     IOMGR_REN_REG0 &= ~BITSET(BOARD_REN0_CLEAR_BIT);
     IOMGR_REN_REG2 |= BOARD_REN2_EXTRA;
 
-    gpio_output(PIN_MIC_MUT, true);
+    gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_FD6818);
     for (uint32_t pin = PIN_KEYPAD_ROW0; pin <= PIN_KEYPAD_ROW4; pin++) {
         gpio_output(pin, true);
     }

@@ -119,6 +119,22 @@
 #define PIN_SPI0_CS     BOARD_PIN_SPI0_CS
 #define PIN_KEY_BKLIGHT BOARD_PIN_KEY_BKLIGHT
 #define PIN_MIC_MUT     BOARD_PIN_MIC_MUT
+
+// The mic selector (PIN_MIC_MUT): which way the microphone goes. The DM-32 has the FD6818 (analog FM) on 1 and the
+// HR_C7000 modem (DMR / the digimodes' vocoder) on 0; a board whose switch is wired the other way round sets
+// BOARD_MIC_MUT_INVERTED. Both routes dead while the signalling still gets out is what an inverted selector looks
+// like: every mode then sends the other chip's silence.
+#ifndef BOARD_MIC_MUT_INVERTED
+#define BOARD_MIC_MUT_INVERTED 0
+#endif
+#define PIN_MIC_MUT_TO_FD6818 ((bool)!BOARD_MIC_MUT_INVERTED)
+#define PIN_MIC_MUT_TO_MODEM  ((bool)BOARD_MIC_MUT_INVERTED)
+
+// The codec's analog mic boost (GCR_MIC1, 4 dB a step: 0x05 = 20 dB). It is shared by every mode that puts the mic
+// into the HR_C7000 (DMR, NXDN, M17, P25); a board with a hotter microphone lowers it here.
+#ifndef BOARD_MIC_ANALOG_BOOST
+#define BOARD_MIC_ANALOG_BOOST 0x05
+#endif
 #define PIN_LCD_NRESET  BOARD_PIN_LCD_NRESET
 #define PIN_LCD_RD      BOARD_PIN_LCD_RD
 #define PIN_KEYPAD_ROW0 BOARD_PIN_KEYPAD_ROW0
