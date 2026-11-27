@@ -51,8 +51,10 @@
 #include "lock_screen.h"
 #include "cable_link.h"
 #include "sound.h"
+#include "ui.h"
 
 #define SHOW_MS  1000
+#define NOTICE_MS 1500 // the lock / unlock bubbles (ui_notify())
 #define CLOCK_MS 5000 // the lock screen's clock
 #define TIME_Y   70
 #define TEXT_Y   150
@@ -60,6 +62,9 @@
 
 static bool keypad_locked = false;
 static bool ptt_locked = false;
+// SK1 + * unlocked: that SK1's release is swallowed. The * went to the lock, not to keymap.c, so keymap.c would take
+// the SK1 released after a long hold for "SK1 held alone" (the lock, by default) and lock again at once (#193)
+static bool swallow_sk1;
 static const ui_screen_t lock_page;
 
 // Locked with the lock PIN: the lock page stays (the lock screen) instead of showing a moment
@@ -68,8 +73,22 @@ static bool lock_screen_stays(void)
     return keypad_locked && security_lock_pin_on();
 }
 
+// The state as a bubble over the home screen (#193: the page showed a second, then nothing told it was locked; the
+// status bar's padlock now does): locked and how to unlock, the PTT locked, or unlocked
 static void show(void)
 {
+    status_bar_set_locked(keypad_locked);
+    if (!lock_screen_stays()) {
+        if (keypad_locked) {
+            ui_notify(TEXT_LOCKED, TEXT_UI_UNLOCK_HINT, UI_NOTICE_LOCK, NOTICE_MS);
+        } else if (ptt_locked) {
+            ui_notify(TEXT_LOCKED, TEXT_PTT, UI_NOTICE_LOCK, NOTICE_MS);
+        } else {
+            ui_notify(TEXT_UNLOCKED, TEXT_COUNT, UI_NOTICE_UNLOCK, NOTICE_MS);
+        }
+        ui_redraw(); // the status bar's padlock
+        return;
+    }
     if (ui_top_screen() == &lock_page) {
         if (!lock_screen_stays()) {
             ui_timer_start(SHOW_MS); // shows already: again from now
@@ -107,6 +126,7 @@ const ui_screen_t *lock_screen_start(void)
         keypad_locked = true;
         ptt_locked = true;
         security_set_locked(true);
+        status_bar_set_locked(true);
         return &lock_page;
     }
     return NULL;
@@ -136,6 +156,14 @@ bool lock_screen_filter(const ui_event_t *ev)
     if (!is_key(ev)) {
         return false;
     }
+    if (swallow_sk1 && (ev->key == UI_KEY_SK1)) {
+        if (ev->type == UI_EVENT_KEY_PRESS) {
+            swallow_sk1 = false; // a new press: released unseen (the cable's keys), this one is the user's
+        } else {
+            swallow_sk1 = (ev->type != UI_EVENT_KEY_RELEASE);
+            return true;
+        }
+    }
     if (ev->key == UI_KEY_PTT) {
         if (ptt_locked && (ev->type == UI_EVENT_KEY_PRESS)) {
             show();
@@ -149,6 +177,7 @@ bool lock_screen_filter(const ui_event_t *ev)
         return true;
     }
     if ((ev->key == UI_KEY_STAR) && (ev->modifiers & UI_MODIFIER_SK1)) {
+        swallow_sk1 = true; // still held
         if (security_lock_pin_on()) {
             pin_screen_unlock(-1); // right: lock_screen_unlock()
         } else {

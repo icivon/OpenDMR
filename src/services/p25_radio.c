@@ -131,10 +131,10 @@ static uint32_t now_ms(void)
 // The event log (ms, event, arg) for the delays, read over the cable (cleared by writing p25_ev_n 0): 1 the key, 2 an
 // LDU into the FIFO (arg: its number), 3 the RF on (p25_phy_tx_begin() done), 10 a data unit received (arg: DUID);
 // from the others (p25_ev_log(), tools/debug/voice_delay.py)
-#ifdef OPENDMR_DEBUG
+#if defined(OPENDMR_DEBUG) || defined(OPENDMR_DELAY_LOG)
 #define P25_EV 64
 #else
-#define P25_EV 1 // the first event only (Makefile DEBUG)
+#define P25_EV 1 // the first event only (Makefile DEBUG or DELAY_LOG)
 #endif
 struct {
     uint32_t ms;

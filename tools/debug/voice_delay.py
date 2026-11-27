@@ -35,7 +35,8 @@ NAMES = {29: 'tx begins', 50: 'play: enough queued', 51: 'play: amp on', 52: 'pl
          20: 'DMR playback starts', 36: 'NXDN voice frame -> FIFO', 44: 'NXDN call begins',
          45: 'NXDN voice frame received', 46: 'NXDN hunt: candidates', 47: 'NXDN false lock', 48: 'NXDN lock lost',
          1: 'P25 key', 2: 'P25 LDU -> FIFO', 3: 'P25 RF on', 10: 'P25 DU received', 11: 'P25 playback on',
-         12: 'P25 playback starts'}
+         12: 'P25 playback starts', 60: 'YSF transmit() / mic on', 61: 'YSF header in, keyed',
+         64: 'YSF V/D frame -> FIFO', 62: 'YSF header received', 63: 'YSF V/D frame received'}
 
 
 class Side:

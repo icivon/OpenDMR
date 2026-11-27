@@ -50,6 +50,13 @@ static theme_colour_t on_receive(void)
                : THEME_COLOUR_TEXT;
 }
 
+static bool locked;
+
+void status_bar_set_locked(bool on)
+{
+    locked = on;
+}
+
 // Signal bars on the left, then the items (time slot, colour code); GPS, scan icon, time and battery on the right.
 // Receiving: the whole bar green; transmitting: red with "TX" (a line under the band was lost next to a light
 // theme's dark band). On those fills one colour for everything on them.
@@ -100,6 +107,13 @@ void status_bar_draw(const status_bar_data_t *data)
         icons_draw(right - ICONS_WIDTH, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_LOCATION,
                    (gps_has_fix() ? text : label));
         right -= ICONS_WIDTH + 4;
+    }
+
+    // the keypad locked: a padlock, amber on the band (#193: nothing showed it was); on the green / red the bar's colour
+    if (locked) {
+        icons_draw(right - 16, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_LOCK,
+                   ((transmitting || receiving) ? text : THEME_COLOUR_WARNING));
+        right -= 16 + 4;
     }
 
     if (data->scanning) {

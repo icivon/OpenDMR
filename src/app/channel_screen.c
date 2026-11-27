@@ -906,6 +906,7 @@ static void draw(void)
     p25_call_t p25;
     nxdn_call_t nxdn;
     m17_call_t m17;
+    ysf_call_t ysf;
 
     if ((channel.mode == CODEPLUG_MODE_DMR) && dmr_call(&call)) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
@@ -925,6 +926,11 @@ static void draw(void)
     if ((channel.mode == CODEPLUG_MODE_M17) && m17_radio_call(&m17) && m17.src[0]) {
         format_names(zone_text, sizeof(zone_text), name, sizeof(name));
         qso_panel_draw_m17(&m17, name, power_text());
+        return;
+    }
+    if ((channel.mode == CODEPLUG_MODE_YSF) && ysf_radio_call(&ysf)) {
+        format_names(zone_text, sizeof(zone_text), name, sizeof(name));
+        qso_panel_draw_ysf(&ysf, name, power_text());
         return;
     }
     meter.active = true;
@@ -1014,6 +1020,14 @@ static void draw(void)
         panel.line_text = text(TEXT_ALL);
         panel.line_right = cc_text;
         bottom.mode = "M17";
+        bottom.item2 = "12.5K";
+    } else if (channel.mode == CODEPLUG_MODE_YSF) {
+        // YSF: to ALL (ysf_radio.h), the DG-ID on its line
+        snprintf(cc_text, sizeof(cc_text), "DG-ID %u", (unsigned)codeplug_ysf_dgid(&channel));
+        panel.line_icon = ICONS_TALKGROUP;
+        panel.line_text = text(TEXT_ALL);
+        panel.line_right = cc_text;
+        bottom.mode = "YSF";
         bottom.item2 = "12.5K";
     } else {
         uint16_t tone = (channel.rx_tone != CODEPLUG_CSS_NONE) ? channel.rx_tone : channel.tx_tone;

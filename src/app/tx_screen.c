@@ -573,6 +573,10 @@ static void draw(void)
             snprintf(cc, sizeof(cc), "CAN %u", (unsigned)codeplug_m17_can(&tx.channel));
             draw_text(FB_WIDTH - WIDGET_MARGIN, DETAIL_Y + 2, cc, &font_roboto17, FONT_ALIGN_RIGHT,
                       THEME_COLOUR_TEXT_LABEL);
+        } else if (tx.channel.mode == CODEPLUG_MODE_YSF) { // the DG-ID there
+            snprintf(cc, sizeof(cc), "DG-ID %u", (unsigned)codeplug_ysf_dgid(&tx.channel));
+            draw_text(FB_WIDTH - WIDGET_MARGIN, DETAIL_Y + 2, cc, &font_roboto17, FONT_ALIGN_RIGHT,
+                      THEME_COLOUR_TEXT_LABEL);
         }
     }
     draw_hline(WIDGET_MARGIN, SEPARATOR_Y, FB_WIDTH - (2 * WIDGET_MARGIN), THEME_COLOUR_LINE);

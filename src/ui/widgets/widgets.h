@@ -63,6 +63,8 @@ typedef struct {
 
 // On the right, from the services: the battery, and the time (the battery percentage when there is no clock)
 void status_bar_draw(const status_bar_data_t *data);
+// The keypad locked (lock_screen.c): a padlock on every status bar, amber (left of the GPS pin) while it is
+void status_bar_set_locked(bool locked);
 
 // ---- Channel panel: zone, channel name, frequency, and a line with an icon (talk group, tone) ----
 #define CHANNEL_PANEL_RECENT 2 // the last heard callers shown under the line

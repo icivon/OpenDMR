@@ -5,3 +5,6 @@ dist/
 nxdn/data/
 tmp/
 .codebuddy/
+ysf/data/
+ysf/c/*.exe
+

@@ -157,6 +157,8 @@ typedef enum {
     UI_NOTICE_OK,    // a tick: done
     UI_NOTICE_ERROR, // a cross: did not happen
     UI_NOTICE_MAIL,  // an envelope: a message came
+    UI_NOTICE_LOCK,  // a closed padlock: the keypad locked (lock_screen.c)
+    UI_NOTICE_UNLOCK, // an open padlock: unlocked
 } ui_notice_kind_t;
 
 #define UI_NOTICE_MS_MAX 25500 // the longest (100 ms steps in the event)

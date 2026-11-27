@@ -43,6 +43,11 @@ ifeq ($(RX_CAPTURE),1)
 CFLAGS  += -DRX_CAPTURE
 endif
 ASFLAGS := $(CPU) $(addprefix -I,$(INCDIRS)) -MMD -MP
+# make clean && make DELAY_LOG=1: only the delay log (p25_radio.c p25_ev, 64 events; tools/debug/voice_delay.py), for
+# when the whole DEBUG build doesn't fit the RAM
+ifeq ($(DELAY_LOG),1)
+CFLAGS  += -DOPENDMR_DELAY_LOG
+endif
 # make clean && make DEBUG=1: the logs and the test functions of tools/debug kept (the mic levels, the P25 tap,
 # capture, transmit log and transmit test, the NXDN AF capture, the DMR transmit trace, the vocoder benches). Off by
 # default: their rings are 1 entry long and the functions only called over the cable are left out (some 26 KB of RAM)

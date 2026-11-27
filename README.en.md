@@ -12,7 +12,7 @@ permission (see "Licences").
 - DMR uses our own AMBE+2 compatible vocoder (the `vocoder/` submodule), P25 our own IMBE vocoder and air interface
   (the `p25/` submodule): **no stock firmware code at all**.
 
-Features: DMR / FM / **P25** (Phase 1 simplex group calls) / **NXDN** (NXDN48 simplex group and individual calls)
+Features: DMR / FM / **P25** (Phase 1 simplex group calls) / **NXDN** (NXDN48 simplex group and individual calls) / **M17** / **YSF** (System Fusion DN simplex)
 receive and transmit, channels and VFO, scan, dual watch, contacts, last heard, FM broadcast
 radio, GPS, APRS beacons, amateur satellite passes, DMR hotspot (MMDVM), VOX, user-defined keys, ... See the
 [user manual](docs/manual.en.md).
@@ -46,6 +46,7 @@ Users: download the package from [Releases](../../releases) and follow the
 | `src/` | The firmware source (`make`, see below) |
 | `vocoder/` | Submodule, repository [va3bpf/dmr-vocoder](https://github.com/va3bpf/dmr-vocoder): our DMR vocoder (AMBE+2 compatible): algorithm, Python verification, fixed-point C (`c/ambe/`, used by the firmware), tests, documents |
 | `p25/` | Submodule, repository [va3bpf/p25-core](https://github.com/va3bpf/p25-core): the P25 Phase 1 IMBE vocoder and air interface (frames, error correction), C code and tests on the PC; the radio side is in [docs/p25.md](docs/p25.md) (Chinese) |
+| `ysf/` | YSF (System Fusion) research and test tools: [README.md](ysf/README.md) (Chinese) the work and its results, [facts.md](ysf/facts.md) the air interface from Yaesu's public specification, `py/` model, demodulation, radio and hotspot tests, `c/` the firmware's YSF code built on the PC |
 | `nxdn/` | NXDN48 research and test tools (our own, from the public NXDN TS 1-A): [README.md](nxdn/README.md) (Chinese) the work and its results, `py/` scripts for demodulation, frames, transmit and hotspot tests, `c/` the firmware's NXDN code built on the PC to compare |
 | `docs/` | [Installation guide](docs/installation.en.md), [user manual](docs/manual.en.md) (screenshots in `docs/manual/`); developer documents: [architecture.md](docs/architecture.md) (architecture, Chinese), [ui-design.en.md](docs/ui-design.en.md) (user interface), [coding-style.md](docs/coding-style.md), [fd6818-registers.md](docs/fd6818-registers.md) (RF chip registers), [i18n.en.md](docs/i18n.en.md) (languages: the design, read it to add one) |
 | `tools/backup/` | `dm32_dump.py`: backup / write tool through the chip's bootloader (and `dumper/`, which it uploads to the radio) |
@@ -146,6 +147,7 @@ Each file's header decides; the full text is in [LICENSE](LICENSE):
 | `src/freertos/` | FreeRTOS, MIT |
 | `vocoder/` | Our own; the decoder is ported from mbelib (ISC). AMBE+2 is DVSI's patented technology: search the patents before any commercial use |
 | `p25/` | Our own; the IMBE parameter decoding and tables ported from mbelib, the positions in the frames from DSD (ISC). IMBE is DVSI's technology too: the same |
+| `ysf/`, `src/services/ysf_*` | Our own, from Yaesu's public "Amateur Radio Digital Standards"; of MMDVMHost and other open implementations only their facts (numbers, tables) were read, no code. YSF voice is AMBE+2: as `vocoder/` |
 | `nxdn/`, `src/services/nxdn_*` | Our own, from the public NXDN TS 1-A specification only, no one else's code. NXDN voice is AMBE+2: as `vocoder/` |
 | Fonts `tools/fonts/ttf/` | Roboto Condensed and Noto Sans SC, both SIL Open Font License 1.1 (licence texts in the same folder) |
 

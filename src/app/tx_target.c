@@ -42,6 +42,7 @@
 #include "p25_radio.h"
 #include "nxdn_radio.h"
 #include "m17_radio.h"
+#include "ysf_radio.h"
 #include "nxdn_id.h"
 
 #define DMR_DEFAULT_TG 9 // a DMR channel or VFO without a contact transmits to it
@@ -175,6 +176,10 @@ void tx_target_apply(codeplug_channel_t *channel, tx_target_t *target)
     }
     if (channel->mode == CODEPLUG_MODE_M17) {
         m17_radio_set_can(codeplug_m17_can(channel)); // to ALL (m17_radio.h)
+        return;
+    }
+    if (channel->mode == CODEPLUG_MODE_YSF) {
+        ysf_radio_set_dgid(codeplug_ysf_dgid(channel)); // to ALL (ysf_radio.h)
         return;
     }
     if (channel->mode != CODEPLUG_MODE_DMR) {

@@ -263,20 +263,22 @@ void qso_panel_draw_p25(const p25_call_t *call, const char *channel_name, const 
     draw(&shown, "P25", NULL, NULL, channel_name, power, nac_text);
 }
 
-void qso_panel_draw_m17(const m17_call_t *call, const char *channel_name, const char *power)
+// a call of a mode with callsigns (M17, YSF): src ("" not known yet: the mode's name shown dimmed), to, status_item
+// on the status bar (or NULL), to_right right of the destination (or NULL)
+static void draw_callsign_call(const char *mode, const char *src, const char *to, const char *status_item,
+                               const char *to_right, const char *channel_name, const char *power)
 {
     const int32_t x = WIDGET_MARGIN;
     const int32_t width = FB_WIDTH - (2 * WIDGET_MARGIN);
     const font_t *call_font; // callsign_font()
     status_bar_data_t status = {.state = STATUS_BAR_RECEIVING};
     s_meter_data_t meter = {.active = true, .open = true, .compact = true};
-    bottom_bar_data_t bottom = {.mode = "M17", .item1 = power, .item2 = "12.5K"};
-    const char *callsign = call->src[0] ? call->src : "M17";
-    const char *to = (strcmp(call->dst, "ALL") == 0) ? text(TEXT_ALL_CALL) : call->dst;
+    bottom_bar_data_t bottom = {.mode = mode, .item1 = power, .item2 = "12.5K"};
+    const char *callsign = src[0] ? src : mode;
 
     s_meter_set_signal(&meter, radio_signal_dbm());
     status.signal_bars = s_meter_bars(&meter);
-    status.item1 = call->muted ? "DATA" : NULL;
+    status.item1 = status_item;
     status.item1_bold = true;
     status_bar_draw(&status);
 
@@ -285,15 +287,37 @@ void qso_panel_draw_m17(const m17_call_t *call, const char *channel_name, const 
     }
     call_font = callsign_font(callsign, width);
     draw_text(x, CALLSIGN_Y + (font_roboto44_bold.ascent - call_font->ascent), callsign, call_font, FONT_ALIGN_LEFT,
-              call->src[0] ? THEME_COLOUR_TEXT : THEME_COLOUR_TEXT_LABEL);
+              src[0] ? THEME_COLOUR_TEXT : THEME_COLOUR_TEXT_LABEL);
 
     draw_hline(x, SEPARATOR_Y, width, THEME_COLOUR_LINE);
     int32_t lx = x + icons_draw(x, TG_Y + 5, ICONS_TALKGROUP, THEME_COLOUR_TEXT_LABEL) + 8;
+    int32_t right = x + width;
+    if (to_right) {
+        draw_text(right, TG_Y + 2, to_right, &font_roboto17, FONT_ALIGN_RIGHT, THEME_COLOUR_TEXT_LABEL);
+        right -= 80;
+    }
     if (to[0]) {
-        draw_text_fitted(lx, TG_Y, to, &font_roboto20, x + width - lx, THEME_COLOUR_TEXT);
+        draw_text_fitted(lx, TG_Y, to, &font_roboto20, right - lx, THEME_COLOUR_TEXT);
     }
     s_meter_draw(S_METER_Y, &meter);
     bottom_bar_draw(&bottom);
+}
+
+void qso_panel_draw_m17(const m17_call_t *call, const char *channel_name, const char *power)
+{
+    const char *to = (strcmp(call->dst, "ALL") == 0) ? text(TEXT_ALL_CALL) : call->dst;
+
+    draw_callsign_call("M17", call->src, to, call->muted ? "DATA" : NULL, NULL, channel_name, power);
+}
+
+void qso_panel_draw_ysf(const ysf_call_t *call, const char *channel_name, const char *power)
+{
+    // ten '*' (or not known yet): a group / CQ call
+    const char *to = (!call->dst[0] || (call->dst[0] == '*')) ? text(TEXT_ALL_CALL) : call->dst;
+    char dgid[12];
+
+    snprintf(dgid, sizeof(dgid), "DG-ID %u", (unsigned)call->dgid);
+    draw_callsign_call("YSF", call->src, to, call->muted ? "VW" : NULL, dgid, channel_name, power);
 }
 
 void qso_panel_draw_nxdn(const nxdn_call_t *call, const char *channel_name, const char *power)

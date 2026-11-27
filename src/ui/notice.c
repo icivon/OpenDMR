@@ -94,10 +94,42 @@ static void wave(int32_t cx, int32_t cy, int32_t r, uint16_t c)
     }
 }
 
+// The upper half of a ring round (cx, cy), radius r, 4 pixels wide: a padlock's shackle
+static void shackle(int32_t cx, int32_t cy, int32_t r, uint16_t c)
+{
+    for (int32_t y = -r - 2; y <= 0; y++) {
+        for (int32_t x = -r - 2; x <= r + 2; x++) {
+            int32_t d2 = (x * x) + (y * y);
+
+            if ((d2 >= ((r - 2) * (r - 2))) && (d2 <= ((r + 2) * (r + 2)))) {
+                fb_fill(cx + x, cy + y, cx + x + 1, cy + y + 1, c);
+            }
+        }
+    }
+}
+
+// A padlock (the lock notices): its body, the keyhole in the card's colour, the shackle closed or lifted open
+static void padlock(int32_t cx, int32_t cy, bool open, theme_colour_t colour, theme_colour_t card)
+{
+    uint16_t c = theme_colour(colour);
+    int32_t lift = open ? 6 : 0;
+
+    round_rect(cx - 12, cy - 2, 25, 17, 3, colour);
+    draw_fill_circle(cx, cy + 4, 4 * 2, card);
+    fb_fill(cx - 1, cy + 5, cx + 1, cy + 10, theme_colour(card));
+    shackle(cx, cy - 7 - lift, 8, c);
+    fb_fill(cx - 10, cy - 7 - lift, cx - 6, cy - 1, c); // the left leg, long enough to reach the body lifted
+    fb_fill(cx + 6, cy - 7 - lift, cx + 10, open ? (cy - 7) : (cy - 1), c); // the right one: out of the body, open
+}
+
 // The kind's icon, centred on (cx, cy), about 30 pixels high, its lines 4 pixels wide
-static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t colour)
+static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t colour, theme_colour_t card)
 {
     switch (kind) {
+        case UI_NOTICE_LOCK:
+        case UI_NOTICE_UNLOCK:
+            padlock(cx, cy, kind == UI_NOTICE_UNLOCK, colour, card);
+            break;
         case UI_NOTICE_OK: // a tick
             wide_line(cx - 12, cy + 1, cx - 4, cy + 9, colour);
             wide_line(cx - 4, cy + 9, cx + 12, cy - 9, colour);
@@ -176,7 +208,7 @@ void ui_notice_draw(text_id_t line1, text_id_t line2, const char *line2_text, ui
         round_rect(x + 1, y + SHADOW, w, h, RADIUS, THEME_COLOUR_OFF); // the shadow
     }
     round_rect(x, y, w, h, RADIUS, card);
-    icon(kind, x + (w / 2), y + PADDING_TOP + (ICON_H / 2), ink);
+    icon(kind, x + (w / 2), y + PADDING_TOP + (ICON_H / 2), ink, card);
 
     int32_t ty = y + PADDING_TOP + ICON_H + ICON_GAP;
 

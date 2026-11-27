@@ -52,6 +52,7 @@
 #include "p25_radio.h"
 #include "nxdn_radio.h"
 #include "m17_radio.h"
+#include "ysf_radio.h"
 #include "radio_internal.h"
 
 #define BEEP_DMR_TX_STOP  0x02 // settings.beep_options
@@ -300,7 +301,7 @@ static void tx_dmr_finished(void)
     post_signal();
 }
 
-// P25 (p25_radio.c), NXDN (nxdn_radio.c) and M17 (m17_radio.c): transmitting until the last data unit / frame is sent
+// P25 (p25_radio.c), NXDN (nxdn_radio.c), M17 (m17_radio.c) and YSF (ysf_radio.c): transmitting until the last data unit / frame is sent
 static void tx_p25_start(void)
 {
     rs.is_transmitting = true;
@@ -337,6 +338,18 @@ static void tx_m17_stop(void)
     m17_radio_transmit(false);
 }
 
+static void tx_ysf_start(void)
+{
+    rs.is_transmitting = true;
+    ysf_radio_transmit(true);
+    post_signal();
+}
+
+static void tx_ysf_stop(void)
+{
+    ysf_radio_transmit(false);
+}
+
 static void tx_digital_finished(void)
 {
     rs.is_transmitting = false;
@@ -370,6 +383,7 @@ static const tx_backend_t TX_DMR = {always, tx_dmr_start, tx_dmr_stop, dmr_is_tr
 static const tx_backend_t TX_P25 = {always, tx_p25_start, tx_p25_stop, p25_radio_transmitting, tx_digital_finished};
 static const tx_backend_t TX_NXDN = {always, tx_nxdn_start, tx_nxdn_stop, nxdn_radio_transmitting, tx_digital_finished};
 static const tx_backend_t TX_M17 = {always, tx_m17_start, tx_m17_stop, m17_radio_transmitting, tx_digital_finished};
+static const tx_backend_t TX_YSF = {always, tx_ysf_start, tx_ysf_stop, ysf_radio_transmitting, tx_digital_finished};
 // The APRS beacon: the FM carrier, the frame sent in it (radio_aprs.c: on the channel or its own frequency)
 static const tx_backend_t TX_BEACON = {aprs_can_start, transmit_on, nothing, never, transmit_off};
 static const tx_backend_t TX_DATA = {data_can_start, tx_data_start, nothing, never, tx_data_finished};
@@ -395,6 +409,7 @@ const tx_backend_t *tx_backend_of(const codeplug_channel_t *c, bool valid)
         case CODEPLUG_MODE_P25: return &TX_P25;
         case CODEPLUG_MODE_NXDN: return &TX_NXDN;
         case CODEPLUG_MODE_M17: return &TX_M17;
+        case CODEPLUG_MODE_YSF: return &TX_YSF;
         default: return &TX_FM; // FM; AM and SSB too, its can_start() refuses them
     }
 }

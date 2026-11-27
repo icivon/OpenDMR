@@ -40,6 +40,7 @@
 #include "list_screen.h"
 #include "sound.h"
 #include "keymap.h"
+#include "power.h"
 #include "key_settings.h"
 
 #define ROWS        (KEYMAP_ACTIONS + 1) // the actions (from 1), then the defaults
@@ -54,8 +55,18 @@ static struct {
     keymap_action_t lost;
 } state;
 
+// Switched off on this page with a change made (#194): saved, as leaving the page does
+static void power_off_save(void)
+{
+    if (state.changed) {
+        state.changed = false;
+        keymap_save();
+    }
+}
+
 static void enter(void *arg)
 {
+    power_off_save_register(power_off_save);
     if (arg != NULL) {
         state.capturing = false;
         state.changed = false;

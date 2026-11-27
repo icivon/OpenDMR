@@ -51,6 +51,7 @@
 #include "p25_radio.h"
 #include "nxdn_radio.h"
 #include "m17_radio.h"
+#include "ysf_radio.h"
 #include "dmr_soft.h"
 #include "radio_internal.h"
 
@@ -294,6 +295,10 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
         m17_radio_stop();
         rs.m17_running = false;
     }
+    if (rs.ysf_running) {
+        ysf_radio_stop();
+        rs.ysf_running = false;
+    }
     if (rs.dmrs_running) {
         dmr_soft_stop();
         rs.dmrs_running = false;
@@ -378,6 +383,11 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
         if (rs.channel.mode == CODEPLUG_MODE_M17) {
             m17_radio_start();
             rs.m17_running = true;
+        }
+        // YSF: the same, C4FM as P25's (ysf_radio.c)
+        if (rs.channel.mode == CODEPLUG_MODE_YSF) {
+            ysf_radio_start();
+            rs.ysf_running = true;
         }
         // DMR: received in software the same way (dmr_soft.c); the engine stands aside but transmits
         if ((rs.channel.mode == CODEPLUG_MODE_DMR) && dmr_soft_wanted()) {

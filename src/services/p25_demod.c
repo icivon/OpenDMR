@@ -56,18 +56,15 @@
 #define G_MIN      (80 << 8)         // gain at least (Q8 a level)
 #define HUNT_ERR   154               // the fit's mean squared error under 0.6 level^2 (Q8) hunting ...
 #define TRACK_ERR  200               // ... 0.78 where the dibits say a sync is
-#define HUNT_SIGNS 21                // of the 24 symbols' signs at least (or at most 24 - this: the other polarity)
 #define SYNC_WRONG 2                 // dibits of the sync wrong at most, locked
 #define HUNT_SYMS  900               // locked without a sync this long: hunting too (longer than an LDU, 864)
 #define LOST_SYMS  2000              // ... and lost
 #define REBASE_AT  (1U << 18)        // samples: the Q12 times kept within int32
 #define REBASE_BY  (1U << 17)        // a multiple of the ring
-#define SYNC_WORD  0x5575F5FF77FFULL // 24 dibits, the first sent the highest
 #define LEVEL_RATE 5                 // the levels' running means: 1/32 of each symbol
 
-static int8_t pattern[24];       // the sync's levels
-static uint64_t sign_mask[3], sign_positive[3];
-static bool ready;
+// P25's frame sync: 24 dibits; hunting, of their signs at least 21 right (or at most 3: the other polarity)
+static const p25_demod_sync P25_SYNC = {0x5575F5FF77FFULL, 24, 21};
 
 static int8_t level_of(unsigned dibit)
 {
@@ -75,24 +72,21 @@ static int8_t level_of(unsigned dibit)
     return lv[dibit & 3];
 }
 
-static void make_pattern(void)
+static void make_pattern(p25_demod *d)
 {
-    if (ready) {
-        return;
-    }
-    for (int k = 0; k < 24; k++) {
-        pattern[k] = level_of((unsigned)(SYNC_WORD >> (46 - 2 * k)));
+    int n = d->sync->n;
+    for (int k = 0; k < n; k++) {
+        d->pattern[k] = level_of((unsigned)(d->sync->word >> (2 * (n - 1 - k))));
     }
     for (int ph = 0; ph < 3; ph++) {
-        for (int k = 0; k < 24; k++) {
+        for (int k = 0; k < n; k++) {
             uint64_t bit = 1ULL << ((ph + 5 * k + 1) / 3);
-            sign_mask[ph] |= bit;
-            if (pattern[k] > 0) {
-                sign_positive[ph] |= bit;
+            d->sign_mask[ph] |= bit;
+            if (d->pattern[k] > 0) {
+                d->sign_positive[ph] |= bit;
             }
         }
     }
-    ready = true;
 }
 
 static int32_t sym_t(int32_t t, int k)
@@ -102,8 +96,14 @@ static int32_t sym_t(int32_t t, int k)
 
 void p25_demod_init(p25_demod *d, p25_demod_cb cb, void *ctx)
 {
-    make_pattern();
+    p25_demod_init_sync(d, cb, ctx, &P25_SYNC);
+}
+
+void p25_demod_init_sync(p25_demod *d, p25_demod_cb cb, void *ctx, const p25_demod_sync *sync)
+{
     memset(d, 0, sizeof(*d));
+    d->sync = sync;
+    make_pattern(d);
     fsk4_fir_init(&d->rrc, fsk4_rrc_4800, d->hist, FSK4_RRC_TAPS, 12);
     for (int i = 0; i < 4; i++) {
         d->m[i] = (2 * i - 3) * 256;
@@ -120,11 +120,12 @@ static bool fit_sync(const p25_demod *d, int32_t t, int sign, int32_t max, fsk4_
 {
     int32_t v[24];
     int8_t p[24];
-    for (int k = 0; k < 24; k++) {
+    int n = d->sync->n;
+    for (int k = 0; k < n; k++) {
         v[k] = fsk4_at(&d->x, sym_t(t, k));
-        p[k] = (int8_t)(sign * pattern[k]);
+        p[k] = (int8_t)(sign * d->pattern[k]);
     }
-    return fsk4_fit(v, p, 24, G_MIN, max, f);
+    return fsk4_fit(v, p, n, G_MIN, max, f);
 }
 
 // 64 of the samples' sign bits from sample i on (bit k: sample i + k)
@@ -198,7 +199,8 @@ static void lock_at(p25_demod *d, int32_t t, int sign, const fsk4_fit_t *f)
 // hunting (not locked, or locked without a sync for HUNT_SYMS): the candidates whose symbols are all in
 static void hunt(p25_demod *d)
 {
-    while (fsk4_have(&d->x, sym_t(d->hunt_t, 24) + FINE_STEP)) {
+    int n = d->sync->n, hunt_signs = d->sync->hunt_signs;
+    while (fsk4_have(&d->x, sym_t(d->hunt_t, n) + FINE_STEP)) {
         if (d->locked && (d->since_sync < HUNT_SYMS)) {
             d->cand = false;
             d->hunt_t = sym_t(d->t, d->k); // kept up with the time line
@@ -212,9 +214,9 @@ static void hunt(p25_demod *d)
             ph = 0;
         }
         d->hunt_t = (ph == 2) ? (int32_t)((i0 + 1) << Q) : (int32_t)((i0 << Q) + (uint32_t)(ph + 1) * HUNT_STEP);
-        uint64_t win = sign_window(d, i0) & sign_mask[ph];
-        int same = 24 - __builtin_popcountll(win ^ sign_positive[ph]);
-        int sign = (same >= HUNT_SIGNS) ? 1 : (same <= 24 - HUNT_SIGNS) ? -1 : 0;
+        uint64_t win = sign_window(d, i0) & d->sign_mask[ph];
+        int same = n - __builtin_popcountll(win ^ d->sign_positive[ph]);
+        int sign = (same >= hunt_signs) ? 1 : (same <= n - hunt_signs) ? -1 : 0;
         fsk4_fit_t f;
         if (sign && fit_sync(d, t, sign, HUNT_ERR, &f) && (!d->cand || (f.err < d->cand_fit.err))) {
             d->cand = true;
@@ -257,13 +259,14 @@ static void track(p25_demod *d)
         d->cb(d->ctx, (int)db);
         // the sync just out (its last symbol k - 2): its place and the levels again from it; the dibits right but the
         // fit not good enough (weak): a sync still, the time line and levels kept
-        uint64_t diff = (d->last ^ SYNC_WORD) & 0xFFFFFFFFFFFFULL;
+        int n = d->sync->n;
+        uint64_t diff = (d->last ^ d->sync->word) & ((1ULL << (2 * n)) - 1);
         int wrong = 0;
-        for (int i = 0; (i < 24) && (wrong <= SYNC_WRONG); i++) {
+        for (int i = 0; (i < n) && (wrong <= SYNC_WRONG); i++) {
             wrong += ((diff >> (2 * i)) & 3) != 0;
         }
-        if ((wrong <= SYNC_WRONG) && (d->since_sync >= 24)) {
-            int32_t due = sym_t(d->t, d->k - 25), best_t = 0, best_err = TRACK_ERR;
+        if ((wrong <= SYNC_WRONG) && (d->since_sync >= n)) {
+            int32_t due = sym_t(d->t, d->k - 1 - n), best_t = 0, best_err = TRACK_ERR;
             fsk4_fit_t best = {0, 0, 0};
             for (int s = -TRACK; s <= TRACK; s++) {
                 fsk4_fit_t f;
@@ -277,7 +280,7 @@ static void track(p25_demod *d)
                 d->t = best_t;
                 d->g = best.g;
                 d->dc = best.dc;
-                restart(d, 24);
+                restart(d, n);
             }
             d->since_sync = 0;
             d->syncs++;

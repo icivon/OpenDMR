@@ -51,6 +51,12 @@ English: [roadmap.en.md](roadmap.en.md)
 - 语音质量：Codec 2 3200 比 AMBE+2 发闷，继续找改进办法
 - 和 MMDVM 热点互通实测；最近通话里记录 M17 呼叫
 
+**YSF**（System Fusion 的 DN 直通语音收发已完成，见 [ysf/README.md](../ysf/README.md)）
+
+- VW（全速率 IMBE）放音：IMBE 解码器在 P25 的 overlay 里，要和 AMBE 同时可用
+- CPS 支持 YSF 信道（模式、DG-ID）；最近通话里记录 YSF 呼叫
+- 和八重洲电台空中互通实测；GPS（DT1/DT2）、Wires-X
+
 **DMR 软件收发**（直通模式的收发已在 0.7.0 改成软件，弱信号下误码更少）
 
 - 中继模式的软件发射，发射时的讲话人别名 / GPS，APRS 数据，热点模式

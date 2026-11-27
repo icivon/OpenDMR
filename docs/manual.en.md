@@ -55,7 +55,7 @@ All of these can be changed in Options → Key settings (see [12](#12-lock-quick
 | # long | Reverse repeater (channel mode only) | Same |
 | * | Timeslot | Bandwidth 12.5 / 25 kHz |
 | * long | Back to the channel's (VFO's) own timeslot | — |
-| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | Same |
+| SK1 + * | Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → YSF | Same |
 | ▶ / ◀ | Talk group + / − (through the RX group list) | Squelch + / − |
 | SK2 + ▶ / ◀ | Power + / − | Same |
 | SK2 + ▶ long | User power | Same |
@@ -140,7 +140,7 @@ opened and closes it. The VFO quick menu works the same.
 
 <img src="manual/en/channel-details.png" alt="Channel details 1"> <img src="manual/en/channel-details-2.png" alt="Channel details 2"> <img src="manual/en/channel-details-3.png" alt="Channel details 3"> <img src="manual/en/channel-details-4.png" alt="Channel details 4">
 
-Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel, the RAN on an NXDN channel, the CAN on an M17 channel), timeslot, TG list, contact, receive and transmit
+Name, receive and transmit frequencies, mode, DMR ID, colour code (the NAC on a P25 channel, the RAN on an NXDN channel, the CAN on an M17 channel, the DG-ID on a YSF channel), timeslot, TG list, contact, receive and transmit
 CTCSS/DCS, bandwidth, step, transmit timeout, Rx only, zone skip, all skip, VOX, channel power, squelch, beep, eco,
 talker alias transmit on TS1 / TS2, APRS configuration.
 
@@ -166,7 +166,7 @@ and B): **hold the back key** to switch, or choose in the VFO menu.
 | Choose the receive / the transmit frequency | SK2 + ▲ / SK2 + ▼ |
 | Type a frequency | Digits (e.g. `43500000`: it is set after the 8th digit, or with the menu key; the back key deletes one) |
 | Swap Rx and Tx while held | SK1 + SK2 |
-| Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 | SK1 + * |
+| Mode: FM → AM → USB → LSB → DMR → P25 → NXDN → M17 → YSF | SK1 + * |
 | Squelch (FM, AM, SSB) / talk group (DMR, P25, NXDN) | ▶ ◀ |
 
 Both frequencies are shown large: the receive one with `RX` (green) on its right, the transmit one with `TX` (red).
@@ -221,6 +221,19 @@ comes the target, `ALL`, with the CAN on the right of its line (e.g. `CAN 0`).
 - **The voice quality is not yet what we want**: Codec 2 3200 itself sounds duller than the AMBE+2 of DMR and NXDN,
   with less treble.
 - CPS 0.10.0 and later support M17 channels (mode, CAN).
+
+**YSF** (Yaesu System Fusion, C4FM 4FSK, 12.5 kHz, simplex voice in DN mode, AMBE+2): the bottom bar shows `YSF` and
+`12.5K`; below the frequency the transmit target `All` (ALL), the DG-ID on the right of that line (e.g. `DG-ID 0`).
+
+- The **DG-ID** (0 - 99) is set in the channel details (on a YSF channel the colour code row becomes the DG-ID), 0 by
+  default. It is transmitted; received calls are not filtered by it, all are played, the call screen shows theirs.
+- **Transmit**: V/D mode 2 (DN on Yaesu radios), always to ALL, from the callsign in the CPS's General settings. A call
+  received shows the caller's callsign in large letters (joining a call late: the callsign after about half a second).
+- **Receive**: DN (V/D mode 2) and V/D mode 1 are played. VW (full rate voice, IMBE) is shown but not played (`VW` on
+  the status bar).
+- Received by software demodulation as P25; transmitted with our own AMBE+2 encoder at YSF's +-2.7 kHz deviation. Tested
+  with an MMDVM hotspot (it decodes our transmissions at 0.1 - 0.2 % BER) and with real Yaesu FTM-400D recordings.
+- The CPS does not support YSF channels yet: use the VFO, or set a channel's mode to YSF in its details on the radio.
 
 ### VFO quick menu (menu key)
 
@@ -669,7 +682,8 @@ Once the stock sector is back (a backup written back, for example), it is used a
 - On a main screen, **SK1 held alone** (about half a second, then released) locks the keypad too; Key settings →
   Lock moves it to other keys. Held with another key (SK1 + ▲ ...) it doesn't lock. SK2 held is a modifier (Delete
   in the messages, Close in the dual watch) and doesn't lock.
-- While locked, a key shows the lock page for a moment; **SK1 + \*** unlocks (SK2 + \* can't be pressed on the
+- Locking and unlocking show a bubble (a closed / open padlock); while locked an amber padlock stays on the status
+  bar. A key pressed while locked shows "Locked SK1 + * to unlock" again; **SK1 + \*** unlocks (SK2 + \* can't be pressed on the
   DM-32: a held SK2 hides the keys 1, 4, 7, \*). With only the keypad locked the PTT still transmits.
 - General options → Auto lock: locks the keypad and the PTT after a time without use.
 - While the cable is in use (CPS, firmware update) the radio doesn't lock, and the auto lock time starts again after
@@ -767,5 +781,6 @@ firmware: see the README.
 - NXDN: NXDN48 simplex in clear only (no NXDN96, trunking or encryption); a caller shows as its ID, there is no NXDN
   ID to callsign database yet.
 - M17: simplex voice and text messages only (no other packet data, no encryption), always to ALL; the voice is duller than DMR / NXDN (Codec 2
+- YSF: DN (V/D mode 2) simplex voice only, always to ALL; VW (full rate) is shown, not played; no Wires-X, GPS, pictures or other data.
   3200).
 - Not fully tested on the air yet: the hotspot's CW ID, satellite passes, talkaround, distance sort.

@@ -44,7 +44,7 @@
 // The codeplug knows FM (0) and DMR (1). AM, USB and LSB (receive only) are stored as an analog channel (0, what the
 // CPS shows) with the mode in the byte the OpenGD77 format leaves unused (opendmr_mode: 0xA1 AM, 0xA2 USB, 0xA3 LSB,
 // anything else FM); P25 as a digital one (1: the CPS shows DMR) with opendmr_mode 0xA4, NXDN (NXDN48, receive only)
-// the same with 0xA5, M17 (receive only for now) with 0xA6
+// the same with 0xA5, M17 with 0xA6, YSF (System Fusion, V/D mode 2) with 0xA7
 typedef enum {
     CODEPLUG_MODE_FM = 0,
     CODEPLUG_MODE_DMR = 1,
@@ -54,16 +54,17 @@ typedef enum {
     CODEPLUG_MODE_P25 = 5,
     CODEPLUG_MODE_NXDN = 6,
     CODEPLUG_MODE_M17 = 7,
+    CODEPLUG_MODE_YSF = 8,
     CODEPLUG_MODES
 } codeplug_mode_t;
 
 static inline bool codeplug_mode_is_analog(uint8_t mode)
 {
     return (mode != CODEPLUG_MODE_DMR) && (mode != CODEPLUG_MODE_P25) && (mode != CODEPLUG_MODE_NXDN) &&
-           (mode != CODEPLUG_MODE_M17);
+           (mode != CODEPLUG_MODE_M17) && (mode != CODEPLUG_MODE_YSF);
 }
 
-// DMR, P25, NXDN and M17: the FD6818 set up as for DMR (the HR_C7000 demodulates 4FSK; NXDN: it records the
+// DMR, P25, NXDN, M17 and YSF: the FD6818 set up as for DMR (the HR_C7000 demodulates 4FSK; NXDN: it records the
 // discriminator)
 static inline bool codeplug_mode_is_digital(uint8_t mode)
 {
@@ -79,11 +80,12 @@ static inline bool codeplug_mode_is_ssb(uint8_t mode)
 static inline bool codeplug_mode_can_transmit(uint8_t mode)
 {
     return (mode == CODEPLUG_MODE_FM) || (mode == CODEPLUG_MODE_DMR) || (mode == CODEPLUG_MODE_P25) ||
-           (mode == CODEPLUG_MODE_NXDN) || (mode == CODEPLUG_MODE_M17);
+           (mode == CODEPLUG_MODE_NXDN) || (mode == CODEPLUG_MODE_M17) || (mode == CODEPLUG_MODE_YSF);
 }
 
-const char *codeplug_mode_name(uint8_t mode);  // "FM", "DMR", "AM", "USB", "LSB", "P25", "NXDN", "M17"
-uint8_t codeplug_mode_step(uint8_t mode, int direction); // the mode key's order: FM, AM, USB, LSB, DMR, P25, NXDN, M17
+const char *codeplug_mode_name(uint8_t mode);  // "FM", "DMR", "AM", "USB", "LSB", "P25", "NXDN", "M17", "YSF"
+// the mode key's order: FM, AM, USB, LSB, DMR, P25, NXDN, M17, YSF
+uint8_t codeplug_mode_step(uint8_t mode, int direction);
 
 // A channel as stored (56 bytes), then two values worked out when it is read
 typedef struct {
@@ -134,6 +136,16 @@ static inline uint16_t codeplug_p25_nac(const codeplug_channel_t *channel)
     }
     return (uint16_t)(((channel->unused2 & 0x0F) << 8) | channel->tx_colour);
 }
+// A channel's own DMR ID (OpenGD77's optional DMR ID: libre_dmr_flag1 0x80, the ID in rx_signaling, arts_interval,
+// encrypt), 0 if it has none: transmitted instead of the radio's (dmr_compat_set_channel(), #194)
+#define CODEPLUG_FLAG1_OPTIONAL_DMR_ID 0x80
+static inline uint32_t codeplug_channel_dmr_id(const codeplug_channel_t *channel)
+{
+    if (!(channel->libre_dmr_flag1 & CODEPLUG_FLAG1_OPTIONAL_DMR_ID)) {
+        return 0;
+    }
+    return ((uint32_t)channel->rx_signaling << 16) | ((uint32_t)channel->arts_interval << 8) | channel->encrypt;
+}
 // DMR's colour code: the low 4 bits of tx_colour, as the radio uses it (dmr_compat.c). The byte is P25's NAC (above)
 // or NXDN's RAN as well: a VFO used in P25 keeps 0x93 there (NAC 0x293), colour code 3; shown whole it was "CC147",
 // too wide for the status bar, nothing shown
@@ -170,6 +182,23 @@ static inline uint8_t codeplug_m17_can(const codeplug_channel_t *channel)
 static inline void codeplug_set_m17_can(codeplug_channel_t *channel, uint8_t can)
 {
     channel->tx_colour = (can <= CODEPLUG_M17_CAN_MAX) ? can : 0;
+}
+
+// YSF channels (and VFOs): the DG-ID, 0 - 99, in the same byte, as P25's NAC with a tag in unused2 (0xB0): without
+// it (a DMR colour code, a NAC, a RAN there) 0, the default: a VFO switched from DMR colour code 1 sent DG-ID 1, which
+// a hotspot's DG-ID gateway takes as a room. Transmitted in the FICH's squelch code field; any received (ysf_radio.c)
+#define CODEPLUG_YSF_DGID_MAX 99
+#define CODEPLUG_YSF_DGID_TAG 0xB0
+static inline uint8_t codeplug_ysf_dgid(const codeplug_channel_t *channel)
+{
+    return ((channel->unused2 == CODEPLUG_YSF_DGID_TAG) && (channel->tx_colour <= CODEPLUG_YSF_DGID_MAX))
+               ? channel->tx_colour
+               : 0;
+}
+static inline void codeplug_set_ysf_dgid(codeplug_channel_t *channel, uint8_t dgid)
+{
+    channel->tx_colour = (dgid <= CODEPLUG_YSF_DGID_MAX) ? dgid : 0;
+    channel->unused2 = CODEPLUG_YSF_DGID_TAG;
 }
 
 typedef struct {

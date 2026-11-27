@@ -54,6 +54,12 @@ Suggestions are welcome in the [issues](https://github.com/va3bpf/OpenDMR/issues
 - Voice quality: Codec 2 3200 sounds duller than AMBE+2; looking for improvements
 - Tests with an MMDVM hotspot; M17 calls in Last heard
 
+**YSF** (System Fusion DN simplex voice receive and transmit done, see [ysf/README.md](../ysf/README.md))
+
+- Playing VW (full rate IMBE): the IMBE decoder is in the P25 overlay, needed next to the AMBE one
+- YSF channels in the CPS (mode, DG-ID); YSF calls in Last heard
+- Over the air tests with Yaesu radios; GPS (DT1/DT2), Wires-X
+
 **DMR in software** (simplex receive and transmit moved to software in 0.7.0: fewer bit errors on weak signals)
 
 - Repeater mode transmit in software, talker alias / GPS when transmitting, APRS data, hotspot mode

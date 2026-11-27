@@ -42,6 +42,14 @@
 
 typedef void (*p25_demod_cb)(void *ctx, int dibit);
 
+// The frame sync hunted for and fitted again at each one: P25's (p25_demod_init()) or another C4FM mode's (YSF's,
+// ysf_radio.c: the same 4800 symbols/s, the same filter)
+typedef struct {
+    uint64_t word;  // n dibits, the first sent the highest
+    int n;          // 24 at most
+    int hunt_signs; // hunting: of the n symbols' signs at least this many right
+} p25_demod_sync;
+
 // Times in samples Q12
 typedef struct {
     fsk4_fir rrc;
@@ -64,12 +72,16 @@ typedef struct {
     int32_t m[4];              // the four levels' running means after g and dc (Q8: -3 .. +3 is -768 .. 768)
     int since_sync;            // symbols out since the last sync
     uint64_t last;             // the last 32 dibits out (2 bits each, the newest lowest)
+    const p25_demod_sync *sync;
+    int8_t pattern[24];        // the sync's levels
+    uint64_t sign_mask[3], sign_positive[3]; // its symbols' nearest samples (the 3 phases), those positive
     p25_demod_cb cb;
     void *ctx;
     uint32_t syncs, lost, relocks, symbols; // counters
 } p25_demod;
 
 void p25_demod_init(p25_demod *d, p25_demod_cb cb, void *ctx);
+void p25_demod_init_sync(p25_demod *d, p25_demod_cb cb, void *ctx, const p25_demod_sync *sync);
 void p25_demod_samples(p25_demod *d, const int16_t *x, int count);
 
 #endif

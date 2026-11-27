@@ -194,7 +194,9 @@ void dmr_compat_set_channel(const codeplug_channel_t *tuned)
     device.trxDMRModeTx = device.trxDMRModeRx;
     device.currentBandWidthIs25kHz = false;
     trxSetDMRColourCode(tuned->tx_colour & 0x0F);
-    trxDMRID = codeplug_get_dmr_id();
+    // the channel's own DMR ID if it has one (set in its details or the CPS), else the radio's (#194)
+    uint32_t own = codeplug_channel_dmr_id(tuned);
+    trxDMRID = ((own >= 1) && (own <= 0xFFFFFF)) ? own : codeplug_get_dmr_id();
 
     currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup = 0;
     if ((tuned->rx_group_list != 0) && codeplug_get_rx_group(tuned->rx_group_list, &group)) {
