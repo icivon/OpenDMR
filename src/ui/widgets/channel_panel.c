@@ -35,14 +35,40 @@
 // the LCD rows above 40.
 #define ZONE_Y      44
 #define NAME_Y      68
-#define FREQUENCY_Y 110
-#define SEPARATOR_Y 146
-#define LINE_Y      160
-// The last heard callers under the talk group line, in the free area before the S meter (250). The title is the last
-// heard screen's ("Last heard"), so no new words to translate.
-#define RECENT_TITLE_Y    186
-#define RECENT_Y          206
+#define FREQUENCY_Y    112 // RX, then TX: roboto22, "MHz" at the baseline, the RX / TX labels right (VFO screen)
+#define TX_FREQUENCY_Y 142
+#define FREQ_CHIP_H    19
+#define FREQ_CHIP_PAD  4
+#define SEPARATOR_Y 174 // the VFO screen's line (vfo_screen.c LINE_Y)
+#define LINE_Y      184 // the VFO screen's tone / talk group line (TONE_Y)
+// The last heard callers under the talk group line, in the free area before the S meter (250): two rows, no title (the
+// history icon on each row says what they are)
+#define RECENT_Y          208
 #define RECENT_ROW_HEIGHT 22
+
+// The RX (green) / TX (red) label, the frequency after it, "MHz" at its baseline; both labels as wide, the
+// frequencies one under the other
+static void draw_frequency(int32_t y, const char *frequency, bool tx)
+{
+    const font_t *font = &font_roboto22;
+    const char *label = text(tx ? TEXT_UI_TX : TEXT_UI_RX);
+    int32_t rx_w = font_text_width(&font_roboto17_bold, text(TEXT_UI_RX));
+    int32_t tx_w = font_text_width(&font_roboto17_bold, text(TEXT_UI_TX));
+    int32_t chip_w = ((rx_w > tx_w) ? rx_w : tx_w) + (2 * FREQ_CHIP_PAD);
+    int32_t cap = (font->ascent * 3) / 4;                                // the digits' height
+    int32_t chip_y = y + font->ascent - cap - ((FREQ_CHIP_H - cap) / 2); // the label centred on the digits
+    int32_t end;
+
+    draw_fill_rect(WIDGET_MARGIN, chip_y, chip_w, FREQ_CHIP_H, (tx ? THEME_COLOUR_TX : THEME_COLOUR_RX));
+    draw_text(WIDGET_MARGIN + (chip_w / 2), chip_y + ((FREQ_CHIP_H - font_roboto17_bold.line_height) / 2), label,
+              &font_roboto17_bold, FONT_ALIGN_CENTER, (tx ? THEME_COLOUR_WHITE : THEME_COLOUR_BACKGROUND));
+    end = font_draw_text(WIDGET_MARGIN + chip_w + 8, y, frequency, font, FONT_ALIGN_LEFT,
+                         theme_colour(THEME_COLOUR_TEXT));
+    if (frequency[0] != '-') {
+        draw_text(end + 6, y + font->ascent - font_roboto17.ascent, "MHz", &font_roboto17, FONT_ALIGN_LEFT,
+                  THEME_COLOUR_TEXT_LABEL);
+    }
+}
 
 void channel_panel_draw(const channel_panel_data_t *data)
 {
@@ -57,7 +83,10 @@ void channel_panel_draw(const channel_panel_data_t *data)
     }
 
     if (data->frequency) {
-        draw_text(x, FREQUENCY_Y, data->frequency, &font_roboto22, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_SECOND);
+        draw_frequency(FREQUENCY_Y, data->frequency, false);
+    }
+    if (data->tx_frequency) {
+        draw_frequency(TX_FREQUENCY_Y, data->tx_frequency, true);
     }
 
     if ((data->line_icon < ICONS_COUNT) || data->line_right) { // an FM channel without a tone: its squelch only
@@ -81,6 +110,12 @@ void channel_panel_draw(const channel_panel_data_t *data)
             draw_text(lx, LINE_Y + 2, data->line_detail, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
         }
 
+        if (data->line_right && data->line_right_squelch) {
+            int32_t text_x = FB_WIDTH - WIDGET_MARGIN - font_text_width(&font_roboto17, data->line_right);
+
+            icons_draw(text_x - 4 - ICONS_SQUELCH_WIDTH, LINE_Y + ((font->line_height - ICONS_SIZE) / 2) + 2,
+                       ICONS_SQUELCH, THEME_COLOUR_TEXT_LABEL);
+        }
         if (data->line_right) {
             draw_text(FB_WIDTH - WIDGET_MARGIN, LINE_Y + 2, data->line_right, &font_roboto17, FONT_ALIGN_RIGHT,
                       THEME_COLOUR_TEXT_LABEL);
@@ -89,10 +124,6 @@ void channel_panel_draw(const channel_panel_data_t *data)
 
     // The last heard callers: the line above is the channel's TX contact, not the caller's talk group, so each row
     // carries its own TG (or "PC"); the timeslot is already on the status bar
-    if (data->recent_count > 0) {
-        draw_text(x, RECENT_TITLE_Y, text(TEXT_LAST_HEARD), &font_roboto14, FONT_ALIGN_LEFT,
-                  THEME_COLOUR_TEXT_LABEL);
-    }
     for (uint8_t row = 0; (row < data->recent_count) && (row < CHANNEL_PANEL_RECENT); row++) {
         const char *name = data->recent[row];
         const char *detail = data->recent_detail[row];

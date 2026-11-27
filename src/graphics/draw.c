@@ -86,18 +86,50 @@ static int32_t disc_coverage(int32_t d2, int32_t r_q)
     return ((outer - d2) * FB_ALPHA_OPAQUE) / (outer - inner);
 }
 
+// floor(sqrt(v)), v >= 0
+static int32_t isqrt(int32_t v)
+{
+    int32_t r = 0;
+
+    for (int32_t bit = 1 << 14; bit > 0; bit >>= 1) { // v < 2^30
+        if (((r + bit) * (r + bit)) <= v) {
+            r += bit;
+        }
+    }
+    return r;
+}
+
+// Each row only between the inner and the outer edge: the pixels further in or out have no coverage (the whole square
+// looked at, the satellite screen's three rings took 11.6 ms of each draw). In pixels: x * x + y * y <= v covers
+// 16 * (x * x + y * y) <= 16 * v
 static void draw_circle(int32_t cx, int32_t cy, int32_t outer_q, int32_t inner_q, theme_colour_t colour)
 {
     uint16_t c = theme_colour(colour);
     int32_t extent = (outer_q / 4) + 1;
+    int32_t outer_2 = ((outer_q + 2) * (outer_q + 2)) / 16; // beyond: no coverage of the outer disc
+    int32_t inner_2 = (inner_q > 2) ? (((inner_q - 2) * (inner_q - 2)) / 16) : -1; // within: both discs full
 
     for (int32_t y = -extent; y <= extent; y++) {
-        for (int32_t x = -extent; x <= extent; x++) {
+        int32_t out = outer_2 - (y * y);
+        int32_t in = inner_2 - (y * y);
+        int32_t x_to;
+        int32_t x_from;
+
+        if (out < 0) {
+            continue;
+        }
+        x_to = isqrt(out);
+        x_to = (x_to > extent) ? extent : x_to;
+        x_from = (in >= 0) ? (isqrt(in) + 1) : 0;
+        for (int32_t x = x_from; x <= x_to; x++) {
             int32_t d2 = ((4 * x) * (4 * x)) + ((4 * y) * (4 * y));
             int32_t alpha = disc_coverage(d2, outer_q) - ((inner_q > 0) ? disc_coverage(d2, inner_q) : 0);
 
             if (alpha > 0) {
                 fb_blend_pixel(cx + x, cy + y, c, alpha);
+                if (x != 0) {
+                    fb_blend_pixel(cx - x, cy + y, c, alpha);
+                }
             }
         }
     }

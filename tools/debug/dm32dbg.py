@@ -64,14 +64,14 @@ class Radio:
         return self.request(b'D' + command + payload, b'D' + command, reply_length, retries=retries)
 
     def fd_read(self, reg):
-        r = self.debug(b'r', bytes([reg]), 5)
-        return (r[3] << 8) | r[4]
+        return self.fd_read_range(reg, 1)[reg]
 
     def fd_write(self, reg, value):
         self.debug(b'w', bytes([reg, (value >> 8) & 0xFF, value & 0xFF]))
 
     def fd_read_range(self, first, count):
-        r = self.debug(b'f', bytes([first, count]), 4 + count * 2)
+        # 'D' 'F' (debug.c); 'D' 'r' / 'f' are test-link commands (the knob, the SMS format)
+        r = self.debug(b'F', bytes([first, count]), 4 + count * 2)
         return {first + i: (r[4 + i * 2] << 8) | r[5 + i * 2] for i in range(r[3])}
 
     def fd_cache(self):

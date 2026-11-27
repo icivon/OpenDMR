@@ -39,7 +39,7 @@
 #include "hal.h"
 #include "util.h"
 #include "leds.h"
-#include "fd6818.h"
+#include "trx.h"
 #include "modem.h"
 #include "settings.h"
 #include "factory_cal.h"
@@ -121,14 +121,14 @@ void transmit_on(void)
     squelch_close();
     rx_beep_cancel();
     leds_red(true);
-    fd6818_set_tx_tone(rs.channel.tx_tone);
-    fd6818_set_frequency(tx, wide);
+    trx_set_tx_tone(rs.channel.tx_tone);
+    trx_set_frequency(tx, wide);
     lna(false, 0);
-    fd6818_transmit_prepare();
-    fd6818_set_mic_gain(settings.mic_gain_fm); // the FM mic goes to the FD6818 (the codec gain is the DMR one)
+    trx_transmit_prepare();
+    trx_set_mic_gain(settings.mic_gain_fm); // the FM mic goes to the FD6818 (the codec gain is the DMR one)
     modem_fm_transmit(wide, settings.mic_gain_fm);
     gpio_output(PIN_MIC_MUT, true); // the mic to the FD6818 (low: to the modem, DMR)
-    fd6818_transmit(wide);
+    trx_transmit(wide);
     gpio_output((tx >= UHF_FROM) ? PIN_PA_UHF : PIN_PA_VHF, true);
     modem_pa_drive(pa_drive(tx));
     rs.is_transmitting = true;
@@ -157,10 +157,10 @@ static void air_tone(uint8_t pattern)
         return;
     }
     for (int i = 0; melody[i] >= 0; i += 2) {
-        fd6818_tx_tone((uint16_t)melody[i], 0, (uint8_t)(sound_tx_tones.air_level * TX_TONE_GAIN_STEP));
+        trx_tx_tone((uint16_t)melody[i], 0, (uint8_t)(sound_tx_tones.air_level * TX_TONE_GAIN_STEP));
         vTaskDelay(pdMS_TO_TICKS(melody[i + 1]));
     }
-    fd6818_tx_tone_end();
+    trx_tx_tone_end();
 }
 
 // What the UI asks (radio_tx_signal()), and what is sent
@@ -176,9 +176,10 @@ void tx_signal_update(void)
         return;
     }
     if ((hz1 == 0) && (hz2 == 0)) {
-        fd6818_tx_tone_end();
+        trx_tx_tone_end();
     } else {
-        fd6818_tx_tone((hz1 == RADIO_TX_SILENT) ? 0 : hz1, hz2, (uint8_t)(sound_tx_tones.air_level * TX_TONE_GAIN_STEP));
+        trx_tx_tone((hz1 == RADIO_TX_SILENT) ? 0 : hz1, hz2,
+                        (uint8_t)(sound_tx_tones.air_level * TX_TONE_GAIN_STEP));
     }
     signal_sent[0] = hz1;
     signal_sent[1] = hz2;
@@ -191,9 +192,9 @@ static void tail(void)
         (rs.channel.tx_tone == CODEPLUG_CSS_NONE)) {
         return;
     }
-    fd6818_tx_tail(((rs.channel.tx_tone & TONES_DCS) != 0), (sound_tx_tones.tail == SOUND_TAIL_PHASE));
+    trx_tx_tail(((rs.channel.tx_tone & TONES_DCS) != 0), (sound_tx_tones.tail == SOUND_TAIL_PHASE));
     vTaskDelay(pdMS_TO_TICKS(TAIL_MS));
-    fd6818_tx_tail_end();
+    trx_tx_tail_end();
 }
 
 // MDC1200 PTT ID: the unit ID the last 4 decimal digits of the DMR ID, as MDC IDs are shown (1234 is 0x1234)
@@ -212,7 +213,7 @@ static void mdc1200(bool start)
         id /= 10;
     }
     mdc1200_encode(packet, MDC1200_OP_PTT_ID, (start ? MDC1200_ARG_PRE : MDC1200_ARG_POST), unit);
-    fd6818_tx_fsk(packet, sizeof(packet), is_wide());
+    trx_tx_fsk(packet, sizeof(packet), is_wide());
 }
 
 static void local_tone(uint8_t pattern)
@@ -420,11 +421,14 @@ static bool in_band_limits(uint32_t frequency)
 // A frequency the radio may transmit on (the hardware's bands and the band limits of the settings)
 bool tx_frequency_ok(uint32_t frequency)
 {
-    return codeplug_frequency_can_transmit(frequency) && in_band_limits(frequency);
+    return trx_locked() && codeplug_frequency_can_transmit(frequency) && in_band_limits(frequency);
 }
 
 radio_tx_check_t tx_check(const codeplug_channel_t *c, bool valid)
 {
+    if (!trx_locked()) {
+        return RADIO_TX_RF_NO_LOCK;
+    }
     if (!valid) {
         return RADIO_TX_NO_CHANNEL;
     }

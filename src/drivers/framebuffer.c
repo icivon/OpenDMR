@@ -165,6 +165,13 @@ static uint8_t blend_table[16][16][16]; // [fg][bg][level]
 static uint16_t blend_table_ready = 0;  // bit per fg
 static uint16_t solid_backgrounds = 0;  // bit per bg: text on it without anti-aliasing (fb_set_solid_backgrounds())
 
+// fb_blend_pixel() with the palette fixed: the palette entry of blend_colour over each entry at each alpha, worked out
+// the first time it's needed (0xFF: not yet). Blending and searching the palette at every pixel took ~2.6 us a pixel
+// (the satellite screen's rings: 6.6 ms of each draw); the colour of a ring or a disc is the same for all its pixels
+static uint8_t blend_cache[16][FB_ALPHA_OPAQUE];
+static uint16_t blend_colour;
+static bool blend_cache_valid = false;
+
 static const uint8_t *blend_table_for(uint8_t fg)
 {
     if ((blend_table_ready & (1 << fg)) == 0) {
@@ -203,6 +210,7 @@ void fb_set_palette(const uint16_t colours[16])
     palette_fixed = true;
     last_index = 0xFF;
     blend_table_ready = 0;
+    blend_cache_valid = false;
 }
 
 void RAM_CODE fb_clear(uint16_t colour)
@@ -264,11 +272,24 @@ void RAM_CODE fb_blend_pixel(int32_t x, int32_t y, uint16_t colour, int32_t alph
         return;
     }
 
+    mark_row_drawn(y);
+    if ((alpha < FB_ALPHA_OPAQUE) && palette_fixed) {
+        uint8_t bg = get_index(x, y);
+
+        if (!blend_cache_valid || (colour != blend_colour)) {
+            memset(blend_cache, 0xFF, sizeof(blend_cache));
+            blend_colour = colour;
+            blend_cache_valid = true;
+        }
+        if (blend_cache[bg][alpha] == 0xFF) {
+            blend_cache[bg][alpha] = palette_index(blend(colour, palette[bg], alpha));
+        }
+        set_index(x, y, blend_cache[bg][alpha]);
+        return;
+    }
     if (alpha < FB_ALPHA_OPAQUE) {
         colour = blend(colour, palette[get_index(x, y)], alpha);
     }
-
-    mark_row_drawn(y);
     set_index(x, y, palette_index(colour));
 }
 

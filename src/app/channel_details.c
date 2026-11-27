@@ -30,8 +30,9 @@
  * OpenDMR, screen: the channel details (menuChannelDetails.c, docs/ui-design.md 5.6). The 26 items of the
  * channel (or VFO) of the home screen, in a list as the settings: UP / DOWN move, LEFT / RIGHT (and the rotary) change
  * the value of the channel itself (the home screen's, channel_screen_edit() / vfo_screen_vfo()): the radio follows after
- * the event (ui_tune()). Left, whichever way (the left key goes home, the right key back), a changed channel is written
- * to the codeplug (a VFO: saved), once, not at each step.
+ * the event (ui_tune()). A change is kept only with OK (the left key: written to the codeplug, a VFO saved, home);
+ * any other way out (the right key, held: home; the PTT's screen over it; the power off) puts the channel back as it
+ * was. The soft keys: OK / Cancel once something changed, else Back.
  * Rx, Tx and DMR ID: the keypad enters a number (8 digits, then the left key or the 8th digit sets it, LEFT deletes,
  * the right key cancels); LEFT / RIGHT on Rx / Tx set Tx to Rx plus a repeater shift. The name is edited in place
  * with text_entry.c (keypad letters, LEFT / RIGHT move, SK2 + LEFT deletes, SK2 + RIGHT inserts).
@@ -56,6 +57,7 @@
 #include "channel_screen.h"
 #include "tones.h"
 #include "text_entry.h"
+#include "power.h"
 #include "channel_details.h"
 
 enum {
@@ -131,6 +133,8 @@ static codeplug_channel_t *edit;    // the home screen's channel or VFO, changed
 static codeplug_channel_t original; // as it was when the screen was entered: written when it changed
 static int ref;                 // channel_details_current_ref() when it was opened
 static char name[NAME_LENGTH + 1];
+static bool active;    // on screen (the power off puts back what OK didn't keep)
+static bool confirmed; // OK: leave() writes it; else leave() puts it back
 static bool name_editable; // not for a VFO
 static text_entry_t name_entry;
 static int shift_index;
@@ -710,9 +714,19 @@ static bool handle_entry(const ui_event_t *ev)
 
 /* The screen */
 
+static void power_off_put_back(void);
+
 static void enter(void *arg)
 {
+    static bool registered;
+
     (void)arg;
+    if (!registered) {
+        registered = true;
+        power_off_save_register(power_off_put_back);
+    }
+    active = true;
+    confirmed = false;
     ref = channel_details_current_ref();
     *selected() = ITEM_NAME;
     digit_entry_stop(&entry);
@@ -753,10 +767,49 @@ static void save(void)
     memcpy(&original, edit, sizeof(original));
 }
 
+// Something changed since the screen was entered (the channel, or the name being typed)
+static bool changed(void)
+{
+    char was[NAME_LENGTH + 1];
+
+    if (ref == 0) {
+        return false;
+    }
+    codeplug_name_to_string(original.name, was, NAME_LENGTH);
+    return (memcmp(edit, &original, sizeof(original)) != 0) || (name_editable && (strcmp(was, name) != 0));
+}
+
+// Cancel: the channel or VFO as it was when the screen was entered, nothing written
+static void put_back(void)
+{
+    if (ref == 0) {
+        return;
+    }
+    memcpy(edit, &original, sizeof(original));
+    codeplug_name_to_string(edit->name, name, NAME_LENGTH);
+    text_entry_start(&name_entry, name, NAME_LENGTH, false);
+}
+
+// Switched off on this screen without OK: put back (a VFO saved again, its saver may have come first)
+static void power_off_put_back(void)
+{
+    if (active && !confirmed && changed()) {
+        put_back();
+        if (is_vfo()) {
+            vfo_screen_save(-1 - ref);
+        }
+    }
+}
+
 static void leave(void)
 {
     ui_timer_stop();
-    save();
+    active = false;
+    if (confirmed) {
+        save();
+    } else {
+        put_back();
+    }
 }
 
 static bool handle(const ui_event_t *ev)
@@ -793,6 +846,7 @@ static bool handle(const ui_event_t *ev)
             *selected() = ITEM_NAME;
             return true;
         }
+        confirmed = true;
         ui_home(); // leave() writes it
         return false;
     }
@@ -819,7 +873,7 @@ static bool handle(const ui_event_t *ev)
         return true;
     }
 
-    list_handle_back(ev); // back (leave() writes it); held: home
+    list_handle_back(ev); // Cancel (leave() puts it back); held: home
     return false;
 }
 
@@ -881,7 +935,12 @@ static void draw(void)
         list_view_draw_row(row, &data);
     }
 
-    bottom_bar_draw_soft_keys(text(TEXT_UI_SAVE), text(TEXT_UI_BACK)); // the left key saves and goes home
+    // changed: OK (written, home) / Cancel (put back); else Back only
+    if (changed()) {
+        bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_CANCEL));
+    } else {
+        bottom_bar_draw_soft_keys(NULL, text(TEXT_UI_BACK));
+    }
 }
 
 const ui_screen_t channel_details_screen = {

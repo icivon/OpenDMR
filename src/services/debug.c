@@ -48,6 +48,8 @@
 #include "debug.h"
 #include "flash.h"
 #include "cable_link.h"
+#include "trx.h"
+#include "trx_spi.h"
 
 
 uint32_t (*debug_app_command)(volatile uint8_t *request, volatile uint8_t *reply, uint32_t reply_size) = NULL;
@@ -183,6 +185,24 @@ uint32_t debug_handle_command(volatile uint8_t *request, volatile uint8_t *reply
             put_word(&reply[2], function(get_word(&request[6]), get_word(&request[10]), get_word(&request[14]),
                                          get_word(&request[18])));
             reply_length = 6;
+        } break;
+
+        case 'F': { // FD6818 registers first .. first + count - 1, read from the chip, high byte first
+            uint32_t first = request[2];
+            uint32_t count = request[3];
+
+            if ((2 + 2 + (2 * count)) > reply_size) {
+                count = (reply_size - 4) / 2;
+            }
+            reply[2] = (uint8_t)first;
+            reply[3] = (uint8_t)count;
+            for (uint32_t i = 0; i < count; i++) {
+                uint16_t value = trx_spi_read((uint8_t)(first + i));
+
+                reply[4 + (2 * i)] = (uint8_t)(value >> 8);
+                reply[5 + (2 * i)] = (uint8_t)value;
+            }
+            reply_length = 4 + (2 * count);
         } break;
 
         case 'P':

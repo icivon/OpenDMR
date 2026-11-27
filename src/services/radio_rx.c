@@ -40,7 +40,7 @@
 #include "hw.h"
 #include "hal.h"
 #include "leds.h"
-#include "fd6818.h"
+#include "trx.h"
 #include "modem.h"
 #include "settings.h"
 #include "factory_cal.h"
@@ -103,9 +103,10 @@ bool is_analog(void)
     return rs.has_channel && codeplug_mode_is_analog(rs.channel.mode);
 }
 
-static fd6818_demod_t demod_of(uint8_t mode)
+static trx_demod_t demod_of(uint8_t mode)
 {
-    return (mode == CODEPLUG_MODE_AM) ? FD6818_DEMOD_AM : (codeplug_mode_is_ssb(mode) ? FD6818_DEMOD_SSB : FD6818_DEMOD_FM);
+    return (mode == CODEPLUG_MODE_AM) ? TRX_DEMOD_AM
+                                      : (codeplug_mode_is_ssb(mode) ? TRX_DEMOD_SSB : TRX_DEMOD_FM);
 }
 
 bool is_wide(void)
@@ -138,7 +139,7 @@ bool rx_noise_busy(void)
     uint8_t noise;
     int level = squelch_level();
 
-    fd6818_read_signal(&signal, &noise);
+    trx_read_signal(&signal, &noise);
     return (level < SQUELCH_OPEN) && (noise < level);
 }
 
@@ -195,7 +196,7 @@ void RAM_CODE post_signal(void)
 void squelch_close(void)
 {
     audio_amp(false);
-    fd6818_af_out(false);
+    trx_af_out(false);
     leds_green(false);
     if (rs.has_carrier || rs.speaker_open) {
         rs.has_carrier = false;
@@ -221,13 +222,13 @@ void receive_on(void)
     gpio_output(PIN_PA_VHF, false);
     gpio_output(PIN_PA_UHF, false);
     lna(true, rs.channel.rx_freq);
-    fd6818_receive(wide);
+    trx_receive(wide);
     if (is_analog()) {
         modem_fm_receive(wide, factory_cal_rx_dac_gain());
     }
-    fd6818_set_frequency(rs.channel.rx_freq, wide);
-    fd6818_receive(wide);
-    fd6818_set_rx_tone(is_fm() ? rs.channel.rx_tone : CODEPLUG_CSS_NONE);
+    trx_set_frequency(rs.channel.rx_freq, wide);
+    trx_receive(wide);
+    trx_set_rx_tone(is_fm() ? rs.channel.rx_tone : CODEPLUG_CSS_NONE);
 }
 
 // The channel asked for (radio_set_channel())
@@ -244,6 +245,23 @@ void apply_channel(void)
     tune_channel(&next, valid);
 }
 
+#define RETUNE_ONLY_MAX 5000 // 50 kHz (10 Hz units): farther, the whole set up (another band's LNA, calibration)
+
+// The same channel but its frequencies, a little apart (the satellites' Doppler correction, the VFO tuned)
+static bool only_retuned(const codeplug_channel_t *next)
+{
+    static codeplug_channel_t moved; // not on the radio task's stack
+    int32_t apart = (int32_t)(next->rx_freq - rs.channel.rx_freq);
+
+    if ((apart > RETUNE_ONLY_MAX) || (apart < -RETUNE_ONLY_MAX)) {
+        return false;
+    }
+    memcpy(&moved, &rs.channel, sizeof(moved));
+    moved.rx_freq = next->rx_freq;
+    moved.tx_freq = next->tx_freq;
+    return memcmp(&moved, next, sizeof(moved)) == 0;
+}
+
 // The radio set up on a channel: the one asked for, or the beacon's frequency for a frame (radio_aprs.c)
 void tune_channel(const codeplug_channel_t *next, bool valid)
 {
@@ -251,6 +269,17 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
     bool was_analog = is_analog();
 
     eco_reset(); // the channel is set up receiving: the power saving starts over
+
+    // An analog channel only retuned: the receiver moved as it is, the squelch and the speaker left as they are (the
+    // whole set up below closed the squelch at each step: a gap and a click in a satellite's downlink every few
+    // seconds, #104)
+    if (valid && rs.has_channel && was_analog && only_retuned(next)) {
+        rs.channel.rx_freq = next->rx_freq;
+        rs.channel.tx_freq = next->tx_freq;
+        lna(true, rs.channel.rx_freq);
+        trx_tune(rs.channel.rx_freq);
+        return;
+    }
 
     // P25: the modem back to DMR while the channel changes (p25_radio.c), started again below on a P25 channel
     if (rs.p25_running) {
@@ -303,7 +332,7 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
     }
     if (!rs.has_channel) {
         lna(false, 0);
-        fd6818_write(0x30, 0x0000); // idle
+        trx_idle();
         vox_setup();
         post_signal();
         return;
@@ -313,9 +342,9 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
         // FM set up (trxSetModeAndBandwidth()): the baseband, the FD6818 FM table and level, then the channel; AM and
         // SSB the same, then their demodulator
         modem_fm_receive(is_wide(), factory_cal_rx_dac_gain());
-        fd6818_set_fm(factory_cal_analog_rx_volume());
+        trx_set_fm(factory_cal_analog_rx_volume());
         if (!is_fm()) {
-            fd6818_set_demod(demod_of(rs.channel.mode));
+            trx_set_demod(demod_of(rs.channel.mode));
         }
         modem_set_frequency_calibration(cal->valid, cal->osc_tune, cal->rx_adjust, factory_cal_mod_bias(rs.channel.tx_freq));
         receive_on();
@@ -325,7 +354,7 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
         if (rs.dmr_running) {
             dmr_retune();
         } else {
-            fd6818_set_dmr();
+            trx_set_dmr();
         }
         modem_set_frequency_calibration(cal->valid, cal->osc_tune, cal->rx_adjust, factory_cal_mod_bias(rs.channel.tx_freq));
         receive_on();
@@ -469,7 +498,7 @@ bool radio_channel_quiet(void)
     return quiet && !radio_channel_busy(); // busy just now: before quiet_check() sees it
 }
 
-// The end of a transmission (a beacon) sets the FD6818's audio out again (fd6818_dmr_burst_rx()): muted again while
+// The end of a transmission (a beacon) sets the FD6818's audio out again (trx_dmr_burst_rx()): muted again while
 // the FM broadcast receiver has the audio switch (radio_broadcast_amp())
 void broadcast_check(void)
 {
@@ -480,7 +509,7 @@ void broadcast_check(void)
     } else if (transmitted) {
         transmitted = false;
         if (audio_sw_broadcast) {
-            fd6818_dmr_af(false);
+            trx_dmr_af(false);
         }
     }
 }
@@ -499,7 +528,7 @@ void dmr_signal(void)
     uint8_t noise;
     uint8_t peak = 0;
 
-    fd6818_read_signal(&signal, &noise);
+    trx_read_signal(&signal, &noise);
     signal_raw = signal;
     noise_raw = noise;
     recent[recent_index] = signal;
@@ -529,7 +558,7 @@ void RAM_CODE squelch_check(void)
     bool open;
     bool close;
 
-    fd6818_read_signal(&signal, &noise);
+    trx_read_signal(&signal, &noise);
     signal_raw = signal;
     noise_raw = noise;
     add_sample(signal);
@@ -553,7 +582,7 @@ void RAM_CODE squelch_check(void)
     if (!rs.has_carrier && open && ((int32_t)(xTaskGetTickCount() - settled_at) >= 0)) {
         rs.has_carrier = true;
         css_missing = 0;
-        fd6818_af_out(true);
+        trx_af_out(true);
         leds_green(true);
         post_signal();
     } else if (rs.has_carrier && close) {
@@ -567,7 +596,7 @@ void RAM_CODE squelch_check(void)
         return;
     }
 
-    bool tone_ok = !tone || fd6818_rx_tone_detected(rs.channel.rx_tone);
+    bool tone_ok = !tone || trx_rx_tone_detected(rs.channel.rx_tone);
 
     if (!rs.speaker_open && tone_ok) {
         rs.speaker_open = true;
@@ -604,7 +633,7 @@ void scan_sample(void)
     if ((int32_t)(xTaskGetTickCount() - scan_settled_at) < 0) {
         return;
     }
-    fd6818_read_signal(&signal, &noise);
+    trx_read_signal(&signal, &noise);
     if (signal > scan_peak) {
         scan_peak = signal;
     }
@@ -651,7 +680,7 @@ void radio_beep_amp(bool on)
 void radio_broadcast_amp(bool on)
 {
     if (on && rs.has_channel && !is_analog() && !audio_sw_broadcast) {
-        fd6818_dmr_af(false);
+        trx_dmr_af(false);
         taskENTER_CRITICAL();
         audio_sw_broadcast = true;
         audio_switch();
@@ -669,7 +698,7 @@ void radio_broadcast_amp(bool on)
         audio_switch();
         taskEXIT_CRITICAL();
         if (rs.has_channel && !is_analog()) {
-            fd6818_dmr_af(true);
+            trx_dmr_af(true);
         }
     }
 }

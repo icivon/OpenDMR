@@ -60,10 +60,12 @@ typedef enum {
     ICONS_STEREO,        // two rings
     ICONS_LOCK,          // padlock
     ICONS_MAIL,          // envelope
+    ICONS_SQUELCH,       // signal bars under a threshold line (14 wide)
     ICONS_COUNT
 } icons_id_t;
 
 #define ICONS_SIZE 18 // all icons are 20 x 18
+#define ICONS_SQUELCH_WIDTH 14 // but ICONS_SQUELCH: 14 x 18 (square bars)
 
 int32_t icons_draw(int32_t x, int32_t y, icons_id_t icon, theme_colour_t colour); // returns the icon width
 

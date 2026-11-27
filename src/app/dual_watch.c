@@ -86,6 +86,8 @@
 #define DW_HANG_MS        3000  // after the signal, on that path, for the answer
 #define DW_FOLLOW_MS      10000 // the transmission follows the path heard during this time after its signal
 #define DW_REDRAW_RX_MS   250
+#define SQUELCH_MIN          1 // codeplug sql: 0 the band default, 1 .. 21: 0 .. 100 % (as the channel screen)
+#define SQUELCH_PERCENT_STEP 5
 
 #define PANEL_TOP    (WIDGET_STATUS_BAR_HEIGHT + 2)
 #define PANEL_HEIGHT ((WIDGET_BOTTOM_BAR_TOP - PANEL_TOP) / 2)
@@ -115,6 +117,12 @@ static uint32_t redraw_ms;
 static bool opening = false;     // turned on: the home screen's channel or VFO becomes the selected path, on top
 static bool transmitted = false; // the transmit screen was pushed: back from it, stay on that path
 static bool sk2_held = false;    // the right soft key says "Close" (SK2 + the right key turns the dual watch off)
+// The squelch of each channel path as it was on the home screen (changed with the keys there), kept while the dual
+// watch is on (#175): the home screen forgets its changes when it goes to the other path. A VFO keeps its own
+static struct {
+    int16_t ref; // the channel; 0: none
+    uint8_t sql;
+} kept[2];
 
 bool dual_watch_is_on(void)
 {
@@ -124,7 +132,11 @@ bool dual_watch_is_on(void)
 void dual_watch_set(bool on)
 {
     opening = on && !dual_watch_is_on();
+    if (on != dual_watch_is_on()) {
+        memset(kept, 0, sizeof(kept)); // on or off: the channels' squelch as they have it
+    }
     settings_set_option(BIT_DUAL_WATCH, on);
+    settings_changed(); // kept over power off (#176)
     settings_save_if_changed();
 }
 
@@ -209,6 +221,8 @@ static void load_path(int i)
         p->vfo = false;
         if (home) {
             memcpy(&p->channel, home, sizeof(p->channel));
+        } else if (kept[i].ref == ref) {
+            p->channel.sql = kept[i].sql;
         }
         codeplug_text_name(p->channel.name, CODEPLUG_NAME_LENGTH, p->name, sizeof(p->name));
     } else {
@@ -242,10 +256,17 @@ static void load_path(int i)
     }
 }
 
+// The paths again; the selected one's squelch kept when it is a channel (load_path())
 static void load_paths(void)
 {
+    int sel = selected();
+
     load_path(0);
     load_path(1);
+    if (!paths[sel].vfo) {
+        kept[sel].ref = path_ref(sel);
+        kept[sel].sql = paths[sel].channel.sql;
+    }
 }
 
 // The path the radio is on (radio_channel(), after the event), and its TX ID (the selected one: the home screen's
@@ -430,6 +451,9 @@ static void select_path(int i)
     set_selected(i);
     settings_changed();
     if (ui_under(go_to_selected, NULL, keep)) {
+        if ((path_ref(i) > 0) && (kept[i].ref == path_ref(i)) && !vfo_screen_is_home()) {
+            channel_screen_set_squelch(kept[i].sql); // the home screen on that channel again, with its squelch
+        }
         resume();
     }
 }
@@ -549,23 +573,24 @@ static void draw_panel(int i, int tx)
         }
     }
 
-    // Channel n or VFO (a call: the path's name); on the right "PTT" (the transmit path), the mode and the power
+    // CH n or VFO (a call: the path's name); on the right "PTT" (the transmit path), the mode and the power
     if (caller) {
-        draw_text(lx, top + 8, p->name, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
+        snprintf(buffer, sizeof(buffer), "%s", p->name);
     } else if (p->vfo) {
-        draw_text(lx, top + 8, "VFO", &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
+        snprintf(buffer, sizeof(buffer), "VFO");
     } else {
-        snprintf(buffer, sizeof(buffer), "%s %d", text(TEXT_APRS_CHANNEL), path_ref(i));
-        draw_text(lx, top + 8, buffer, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
+        snprintf(buffer, sizeof(buffer), "CH %d", path_ref(i));
     }
-    if (ptt) {
-        int32_t w = font_text_width(&font_roboto14, "PTT") + 10;
+    draw_text(lx, top + 8, buffer, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
+    // The transmit path: the transmit icon, white on the transmit colour (as the TX labels), in a place of its own kept
+    // free on the other path too: the mode and the power stay where they are
+    int32_t ptt_w = 22;
 
-        draw_fill_rect(right - w, top + 9, w, 18, THEME_COLOUR_ACCENT);
-        draw_text(right - 5, top + 9 + ((18 - font_roboto14.line_height) / 2), "PTT", &font_roboto14, FONT_ALIGN_RIGHT,
-                  THEME_COLOUR_ON_ACCENT);
-        right -= w + 6;
+    if (ptt) {
+        draw_fill_rect(right - ptt_w, top + 8, ptt_w, 20, THEME_COLOUR_TX);
+        icons_draw(right - ptt_w + 2, top + 9, ICONS_TX, THEME_COLOUR_WHITE); // its art: 16 px of 20 from the left
     }
+    right -= ptt_w + 6;
     if (known) {
         snprintf(buffer, sizeof(buffer), "ID %lu", (unsigned long)call.source);
     } else {
@@ -573,6 +598,23 @@ static void draw_panel(int i, int tx)
                  bottom_bar_power_label((power < 10) ? power : 9));
     }
     draw_text(right, top + 8, buffer, &font_roboto17, FONT_ALIGN_RIGHT, THEME_COLOUR_TEXT_LABEL);
+
+    // The squelch of the analog modes (#175) on the name's line, right: its icon and the value, at the name's baseline
+    int32_t name_w = (FB_WIDTH - WIDGET_MARGIN) - x;
+
+    if (codeplug_mode_is_analog(ch->mode)) {
+        int sql = (ch->sql != 0) ? ch->sql : settings.squelch_defaults[radio_band_of(ch->rx_freq)];
+        int32_t baseline = top + 32 + font_roboto32_bold.ascent;
+        int32_t sq_x;
+
+        snprintf(buffer, sizeof(buffer), "%d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
+        sq_x = FB_WIDTH - WIDGET_MARGIN - font_text_width(&font_roboto17, buffer);
+        draw_text(FB_WIDTH - WIDGET_MARGIN, baseline - font_roboto17.ascent, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
+                  THEME_COLOUR_TEXT_LABEL);
+        sq_x -= 4 + ICONS_SQUELCH_WIDTH;
+        icons_draw(sq_x, baseline - 15, ICONS_SQUELCH, THEME_COLOUR_TEXT_LABEL); // its bars end on row 14
+        name_w = sq_x - 8 - x;
+    }
 
     // The name, large; a call: the caller's callsign (its ID when not known); typed on the selected path: the channel
     // number or the frequency
@@ -582,7 +624,7 @@ static void draw_panel(int i, int tx)
         snprintf(buffer, sizeof(buffer), "-> %d", channel_screen_typed());
         draw_text(x, top + 32, buffer, &font_roboto32_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
     } else {
-        draw_text(x, top + 32, (caller ? who : p->name), &font_roboto32_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        draw_text_fitted(x, top + 32, (caller ? who : p->name), &font_roboto32_bold, name_w, THEME_COLOUR_TEXT);
     }
 
     // "RX" and "TX" small, each before its frequency; the selected VFO: in the one the knob and the digits change, the
@@ -637,9 +679,13 @@ static void draw_panel(int i, int tx)
 static void draw(void)
 {
     status_bar_data_t status = {0};
+    s_meter_data_t meter = {.active = true, .open = radio_is_receiving()};
     bool typing = vfo_screen_is_home() ? vfo_screen_typing() : (channel_screen_typed() > 0);
 
-    status.state = radio_is_receiving() ? STATUS_BAR_RECEIVING : STATUS_BAR_IDLE;
+    // the signal bars as the home screens: from the S meter's reading (#175)
+    s_meter_set_signal(&meter, radio_signal_dbm());
+    status.state = meter.open ? STATUS_BAR_RECEIVING : STATUS_BAR_IDLE;
+    status.signal_bars = s_meter_bars(&meter);
     status_bar_draw(&status);
     draw_panel(0, tx_path(systime_get_ms()));
     draw_panel(1, tx_path(systime_get_ms()));

@@ -55,6 +55,12 @@ static const ui_list_t *list(void)
 
 bool (*ui_list_quick_item)(const ui_event_t *ev, const ui_item_t *item);
 bool (*ui_list_quick_pick)(const ui_event_t *ev, const ui_pick_list_t *pick, int index);
+void (*ui_list_settings_take)(void);
+void (*ui_list_settings_restore)(void);
+void (*ui_list_settings_drop)(void);
+
+// The list with changes not confirmed yet (OK / Cancel); NULL: none. One at most: it opens nothing meanwhile
+static const ui_list_t *editing;
 
 void ui_list_open_item(const ui_item_t *item)
 {
@@ -126,9 +132,17 @@ static bool bit_is_on(const ui_bit_t *bit)
     return ((*bit->word & bit->mask) != 0) != bit->inverted;
 }
 
-// LEFT (-1) / RIGHT (+1) on an item; true: it changed something to show
+// LEFT (-1) / RIGHT (+1) on an item; true: it changed something to show. Before the list's first change, a copy of
+// the settings (Cancel puts it back)
 static bool change_value(const ui_item_t *item, int direction, uint8_t modifiers)
 {
+    if ((item->type == UI_ITEM_BIT) || (item->type == UI_ITEM_CHOICE) || (item->type == UI_ITEM_NUMBER) ||
+        ((item->type == UI_ITEM_CUSTOM) && ((const ui_custom_t *)item->target)->change)) {
+        if (!editing && ui_list_settings_take) {
+            ui_list_settings_take();
+            editing = list();
+        }
+    }
     switch (item->type) {
         case UI_ITEM_BIT:
             bit_set(item->target, (direction > 0));
@@ -327,9 +341,28 @@ static void enter(void *arg)
 static void leave(void)
 {
     ui_list_remember(list_id(list()), *ui_state());
+    if (editing == list()) {
+        return; // covered (the PTT ...) with changes not confirmed: saved by OK only
+    }
     settings_save_if_changed();
     if (list()->leave) {
         list()->leave();
+    }
+}
+
+// OK: the changes kept (saved by leave()); Cancel: everything as before the first one
+static void finish(bool ok, bool home)
+{
+    if (ok) {
+        ui_list_settings_drop();
+    } else {
+        ui_list_settings_restore();
+    }
+    editing = NULL;
+    if (home) {
+        ui_home();
+    } else {
+        ui_pop();
     }
 }
 
@@ -391,10 +424,24 @@ static bool handle(const ui_event_t *ev)
         navigate(ev, selected, 0);
         return false;
     }
-    if (l->keys && l->keys(ev)) {
+    if (editing == l) { // OK (the left key) / Cancel (the right key; held: home too); nothing opened meanwhile
+        if ((ev->type == UI_EVENT_KEY_PRESS) && (ev->key == UI_KEY_GREEN)) {
+            finish(true, false);
+            return false;
+        }
+        if (ev->key == UI_KEY_RED) {
+            if (ev->type == UI_EVENT_KEY_LONG) {
+                finish(false, true);
+            } else if ((ev->type == UI_EVENT_KEY_RELEASE) && !ev->long_press) {
+                finish(false, false);
+            }
+            return false;
+        }
+    }
+    if ((editing != l) && l->keys && l->keys(ev)) {
         return false;
     }
-    if (ui_list_quick_item && ui_list_quick_item(ev, &l->items[*selected])) {
+    if ((editing != l) && ui_list_quick_item && ui_list_quick_item(ev, &l->items[*selected])) {
         return false;
     }
 
@@ -453,7 +500,11 @@ static void draw(void)
         list_view_draw_row(row, &data);
     }
 
-    // "Select" only where the left key does something (select_item()): not on a value
+    // Changed: OK / Cancel; else "Select" only where the left key does something (select_item()): not on a value
+    if (editing == l) {
+        bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_CANCEL));
+        return;
+    }
     bottom_bar_draw_soft_keys(((selected < l->count) && item_selectable(&l->items[selected])) ? text(TEXT_UI_SELECT)
                                                                                              : NULL,
                               text(TEXT_UI_BACK));

@@ -361,7 +361,9 @@ screen with one more path watched: the **selected path** is the home screen's ch
 - **#** on a main screen. **#** cycles TG → PC → All Call → contact; ▲ ▼ add / subtract 1.
 - The menu key takes it: a TG, PC or the All Call (16777215, nothing to type) replaces the channel's contact for
   now (on a channel: until another channel, the VFO or power off); a contact also brings its timeslot. Your own DMR ID is set in Settings (User DMR ID), not here.
-- In FM # is the DTMF entry: digits, * and # type the code, ◀ deletes, the menu key sends it.
+- In FM # is the DTMF entry: digits, * and # type the code, ◀ deletes, the menu key sends it. Its timing (digits
+  a second, the delay before the first one...) is set in the CPS: Radio settings, DTMF; 5 digits a second when the
+  codeplug has none.
 
 ### Contact list (SK2 + #)
 

@@ -120,7 +120,7 @@ static void restore_defaults(settings_t *s)
     } while (0)
 #define CHECK(field, low, high) CHECK_IF(field, IN(settings.field, (low), (high)))
 
-#define BITS_KNOWN       0x07FFFBFFUL // bitfield_options: the main firmware's BIT_x (not 10, nor above 26)
+#define BITS_KNOWN       0x07FFFFFFUL // bitfield_options: BIT_x up to 26 (10: the dual watch, dual_watch.c; #176)
 #define TIMEZONE_MASK    0x7F         // menus.c: quarters of an hour from UTC - 64, -12 h .. +14 h
 #define TIMEZONE_MIN     (64 - (12 * 4))
 #define TIMEZONE_MAX     (64 + (14 * 4))

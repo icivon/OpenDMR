@@ -28,7 +28,7 @@
 
 /*
  * OpenDMR, service: MDC1200 packets. After the MDC1200 encoder of the UV-K5 firmware (OneOfEleven
- * uv-k5-firmware-custom mdc1200.c, which sends it with the BK4819's FFSK, as fd6818_tx_fsk() does).
+ * uv-k5-firmware-custom mdc1200.c, which sends it with the BK4819's FFSK, as trx_tx_fsk() does).
  *
  * A single packet: op, arg, the unit ID (high byte first), the CRC (CCITT reflected, inverted, low byte first) and a
  * 0, then their R = 1/2, K = 7 convolutional code; the 14 bytes interleaved bit by bit (16 x 7), the whole packet

@@ -85,6 +85,7 @@
 #define SQUELCH_PERCENT_STEP 5
 #define FLAG2_TIMESLOT_2     0x40
 #define FLAG4_BANDWIDTH_25K  0x02
+#define FLAG4_RX_ONLY        0x04 // services/radio_internal.h
 #define FLAG1_FORCE_DMO      0x04 // libre_dmr_flag1
 #define SIDE_KEYS            (UI_MODIFIER_SK1 | UI_MODIFIER_SK2)
 
@@ -541,6 +542,14 @@ bool channel_screen_select(int number)
     return true;
 }
 
+void channel_screen_set_squelch(uint8_t sql)
+{
+    if (has_channel) {
+        channel.sql = (uint8_t)CLAMP(sql, 0, SQUELCH_MAX);
+        keep(TEMP_SQL);
+    }
+}
+
 int channel_screen_typed(void)
 {
     return direct_channel;
@@ -887,6 +896,7 @@ static void draw(void)
     char zone_text[64];
     char name[48];
     char freq[24];
+    char tx_freq[24];
     char line[24];
     char cc_text[16];
     char detail[24];
@@ -934,11 +944,18 @@ static void draw(void)
     if (direct_channel > 0) {
         snprintf(name, sizeof(name), "-> %d", direct_channel);
     }
-    snprintf(freq, sizeof(freq), "%lu.%04lu MHz", (unsigned long)(radio_ch.rx_freq / 100000),
+    snprintf(freq, sizeof(freq), "%lu.%04lu", (unsigned long)(radio_ch.rx_freq / 100000), // "MHz": channel_panel.c
              (unsigned long)((radio_ch.rx_freq % 100000) / 10));
+    if (radio_ch.flag4 & FLAG4_RX_ONLY) {
+        snprintf(tx_freq, sizeof(tx_freq), "--");
+    } else {
+        snprintf(tx_freq, sizeof(tx_freq), "%lu.%04lu", (unsigned long)(radio_ch.tx_freq / 100000),
+                 (unsigned long)((radio_ch.tx_freq % 100000) / 10));
+    }
     panel.zone = zone_text;
     panel.name = name;
     panel.frequency = freq;
+    panel.tx_frequency = tx_freq;
     panel.line_icon = ICONS_COUNT;
 
     if (channel.mode == CODEPLUG_MODE_DMR) {
@@ -1011,11 +1028,12 @@ static void draw(void)
         if (codeplug_mode_is_ssb(channel.mode)) {
             bottom.item2 = "3K";
         }
-        // the squelch always on the line, right, as the VFO screen shows it
+        // the squelch always on the line, right, after its icon, as the VFO screen shows it
         int sql = (channel.sql != 0) ? channel.sql : settings.squelch_defaults[radio_band_of(channel.rx_freq)];
 
-        snprintf(squelch, sizeof(squelch), "%s %d%%", text(TEXT_SQUELCH), (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
+        snprintf(squelch, sizeof(squelch), "%d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
         panel.line_right = squelch;
+        panel.line_right_squelch = true;
     }
     if (reversed) { // on the right; DMR's timeslot and colour code there: in the middle
         if (bottom.right == NULL) {

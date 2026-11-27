@@ -52,7 +52,7 @@
 #define BEEP_RX_TALKER_BEGIN 0x10 // talker beep at the beginning too, not only at the end
 #define BEEP_CHOICES         4
 #define DMR_MIC_GAIN_MAX     20 // DM-32: GCR_ADCL, after the 20 dB analog boost (modem.c); 16 gives a normal level
-#define FM_MIC_GAIN_MAX      31 // DM-32: the FD6818 mic sensitivity (fd6818_set_mic_gain()), 26 the stock default
+#define FM_MIC_GAIN_MAX      31 // DM-32: the FD6818 mic sensitivity (trx_set_mic_gain()), 26 the stock default
 #define VOX_THRESHOLD_MIN    1 // the VOX levels (vox.h): 1 the most sensitive; 0 (off) is only the default
 #define VOX_THRESHOLD_MAX    VOX_LEVELS
 #define VOX_TAIL_MIN         1 // 500 ms units: 0.5 s .. 5 s

@@ -44,6 +44,8 @@
 #include "m17_radio.h"
 #include "nxdn_id.h"
 
+#define DMR_DEFAULT_TG 9 // a DMR channel or VFO without a contact transmits to it
+
 #define TS_MASK           0x03
 #define TS_CONTACT_SHIFT  6    // tsSetContactHasBeenOverriden(): a bit for each source after the 3 x 2 bits
 #define FLAG2_TIMESLOT_2  0x40
@@ -179,6 +181,12 @@ void tx_target_apply(codeplug_channel_t *channel, tx_target_t *target)
         return;
     }
     tx_target_get(channel, target);
+    if ((target->id & CODEPLUG_CONTACT_ID_MAX) == 0) {
+        // No contact (an FM channel switched to DMR with the keys, a DMR channel without one): TG 9, the local group,
+        // shown on the channel. TG 0 isn't a call: receivers don't show it, repeaters and BrandMeister drop it
+        target->id = DMR_DEFAULT_TG;
+        snprintf(target->name, sizeof(target->name), "%s %d", text(TEXT_TG), DMR_DEFAULT_TG);
+    }
     channel->flag2 = (uint8_t)((target->timeslot == 2) ? (channel->flag2 | FLAG2_TIMESLOT_2)
                                                        : (channel->flag2 & ~FLAG2_TIMESLOT_2));
     dmr_set_tx_id(target->id);

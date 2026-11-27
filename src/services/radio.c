@@ -40,7 +40,7 @@
 #include "task.h"
 #include "hw.h"
 #include "hal.h"
-#include "fd6818.h"
+#include "trx.h"
 #include "systime.h"
 #include "modem.h"
 #include "factory_cal.h"
@@ -345,9 +345,9 @@ void radio_init(void)
     lna(false, 0);
 
     factory_cal_init();
-    fd6818_init();
+    trx_init();
     modem_init();
-    fd6818_post_init();
+    trx_post_init();
     modem_pa_drive(0);
     dmr_init();
 }

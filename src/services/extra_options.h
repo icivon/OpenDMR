@@ -49,7 +49,18 @@
 // options menu, the Dg cable command and tools/debug/radio.py change it (BrandMeister's common gateway is 5057).
 #define APRS_DMR_GATEWAY_DEFAULT 222999u // 0x036717
 
+// The block as stored (extra_options.c), for a copy taken and put back whole (the menus' Cancel, config_snapshot.c)
+typedef struct {
+    uint32_t magic;
+    uint32_t bits;
+    uint8_t theme;           // 0xFF: none chosen (a block written before it)
+    uint8_t aprs_gateway[3]; // 24 bit DMR ID, big endian; 0 / 0xFFFFFF: use the default
+    uint8_t sms_format;      // the DMR text messages' format (dmr_sms.h); another value (a block before it): Motorola
+} extra_options_block_t;
+
 void extra_options_load(void); // after flash_init()
+void extra_options_get_block(extra_options_block_t *copy);
+void extra_options_set_block(const extra_options_block_t *copy); // saved at once when it differs
 bool extra_option(uint32_t bit);
 void extra_option_set(uint32_t bit, bool on); // saved at once
 uint8_t extra_options_theme(void);          // the theme chosen (display.c); 0xFF: none yet

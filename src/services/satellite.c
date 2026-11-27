@@ -155,6 +155,10 @@ static satellite_t satellites[SATELLITE_MAX];
 static int count = 0;
 static observer_t observer;
 static search_t search;
+// The passes are kept from one visit of the satellite screen to the next (#104): predicted again only when the
+// satellites or the place changed since, or the clock went back before the last prediction's start
+static bool stale = true;
+static uint32_t predicted_from;
 
 /* Maths (no libm) */
 
@@ -383,30 +387,41 @@ static uint32_t le32(const uint8_t *p)
 int satellite_load(void)
 {
     static uint8_t record[RECORD_SIZE]; // not on the UI task stack
+    static satellite_t fresh;
     uint32_t address = custom_data_find(CUSTOM_DATA_TYPE_SATELLITE_TLE, NULL);
+    int before = count;
 
     count = 0;
     search.phase = SEARCH_IDLE;
     if (address == 0) {
+        stale = true;
         return 0;
     }
     while ((count < SATELLITE_MAX) && flash_read(address + (count * RECORD_SIZE), record, sizeof(record)) &&
            (record[RECORD_NAME] != 0) && (record[RECORD_NAME] != 0xFF)) {
         satellite_t *s = &satellites[count];
 
-        memset(s, 0, sizeof(*s));
-        memcpy(s->name, &record[RECORD_NAME], SATELLITE_NAME_LENGTH); // not always 0 terminated
-        keps_from_tle(record, &s->keps);
-        s->freqs[SATELLITE_FREQ_VOICE].rx_hz = le32(&record[RECORD_RX1]);
-        s->freqs[SATELLITE_FREQ_VOICE].tx_hz = le32(&record[RECORD_TX1]);
-        s->freqs[SATELLITE_FREQ_VOICE].tx_ctcss = record[RECORD_TX_CTCSS1] | (record[RECORD_TX_CTCSS1 + 1] << 8);
-        s->freqs[SATELLITE_FREQ_VOICE].arm_ctcss = record[RECORD_ARM_CTCSS1] | (record[RECORD_ARM_CTCSS1 + 1] << 8);
-        s->freqs[SATELLITE_FREQ_APRS].rx_hz = le32(&record[RECORD_RX2]);
-        s->freqs[SATELLITE_FREQ_APRS].tx_hz = le32(&record[RECORD_TX2]);
-        s->freqs[SATELLITE_FREQ_OTHER].rx_hz = le32(&record[RECORD_RX3]);
-        s->freqs[SATELLITE_FREQ_OTHER].tx_hz = le32(&record[RECORD_TX3]);
+        memset(&fresh, 0, sizeof(fresh));
+        memcpy(fresh.name, &record[RECORD_NAME], SATELLITE_NAME_LENGTH); // not always 0 terminated
+        keps_from_tle(record, &fresh.keps);
+        fresh.freqs[SATELLITE_FREQ_VOICE].rx_hz = le32(&record[RECORD_RX1]);
+        fresh.freqs[SATELLITE_FREQ_VOICE].tx_hz = le32(&record[RECORD_TX1]);
+        fresh.freqs[SATELLITE_FREQ_VOICE].tx_ctcss = record[RECORD_TX_CTCSS1] | (record[RECORD_TX_CTCSS1 + 1] << 8);
+        fresh.freqs[SATELLITE_FREQ_VOICE].arm_ctcss = record[RECORD_ARM_CTCSS1] | (record[RECORD_ARM_CTCSS1 + 1] << 8);
+        fresh.freqs[SATELLITE_FREQ_APRS].rx_hz = le32(&record[RECORD_RX2]);
+        fresh.freqs[SATELLITE_FREQ_APRS].tx_hz = le32(&record[RECORD_TX2]);
+        fresh.freqs[SATELLITE_FREQ_OTHER].rx_hz = le32(&record[RECORD_RX3]);
+        fresh.freqs[SATELLITE_FREQ_OTHER].tx_hz = le32(&record[RECORD_TX3]);
+        // The passes kept while the satellite is the same (its keps, name and frequencies)
+        if ((count >= before) || (memcmp(fresh.name, s->name, sizeof(fresh.name)) != 0) ||
+            (memcmp(&fresh.keps, &s->keps, sizeof(fresh.keps)) != 0) ||
+            (memcmp(fresh.freqs, s->freqs, sizeof(fresh.freqs)) != 0)) {
+            stale = true;
+            memcpy(s, &fresh, sizeof(*s));
+        }
         count++;
     }
+    stale = stale || (count != before);
     return count;
 }
 
@@ -437,6 +452,8 @@ static float location_degrees(uint32_t fixed)
 
 bool satellite_set_observer_from_settings(void)
 {
+    observer_t before = observer;
+
     if (!settings_valid() || (settings.location_lat == LOCATION_UNSET)) {
         return false;
     }
@@ -464,6 +481,7 @@ bool satellite_set_observer_from_settings(void)
     observer.oz = rz * observer.uz;
     observer.vox = -observer.oy * EARTH_W0;
     observer.voy = observer.ox * EARTH_W0;
+    stale = stale || (memcmp(&observer, &before, sizeof(observer)) != 0);
     return true;
 }
 
@@ -694,13 +712,17 @@ static void search_iterate(void)
 
 void satellite_predict_start(uint32_t now)
 {
+    if (!stale && (now >= predicted_from)) {
+        return; // the passes as they were: the steps drop the ones over and predict further
+    }
     for (int sat = 0; sat < count; sat++) {
         satellites[sat].pass_count = 0;
         satellites[sat].done = false;
     }
     search.sat = 0;
     search.phase = SEARCH_IDLE;
-    (void)now;
+    stale = false;
+    predicted_from = now;
 }
 
 // Drops the passes that are over; the satellite is predicted further

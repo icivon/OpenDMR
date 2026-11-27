@@ -49,6 +49,9 @@ bool channel_screen_lock_out(int number);
 int channel_screen_scanning(void); // 0 no scan, 1 scanning, 2 standing on a signal (the test interface)
 // The dual watch: channel number shown (in the zone in use when it is there, else in all channels); false: not in use
 bool channel_screen_select(int number);
+// The dual watch, back on a channel path: the squelch it had there, as if changed with the keys (for now, never
+// written; codeplug sql: 0 the band default, 1 .. 21)
+void channel_screen_set_squelch(uint8_t sql);
 int channel_screen_typed(void); // the channel number being typed (its position in the zone), 0: none
 
 #endif

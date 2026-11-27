@@ -76,7 +76,9 @@ bool satellite_set_observer_from_settings(void);
 void satellite_look(int sat, uint32_t utc, satellite_look_t *look);
 
 // Predictions: start, then step until done (each step computes at most 'budget' positions, a few tens of µs each).
-// Passes that are over are dropped and the next ones predicted by the following steps.
+// Passes that are over are dropped and the next ones predicted by the following steps. The passes are kept from one
+// start to the next: it starts over only when satellite_load() or satellite_set_observer_from_settings() found a change
+// since, or now is before the last start (the clock set back).
 void satellite_predict_start(uint32_t now);
 bool satellite_predict_step(uint32_t now, int budget); // true: all the satellites predicted
 int satellite_predicted_count(void);                   // satellites done, for a progress bar

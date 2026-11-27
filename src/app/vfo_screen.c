@@ -113,8 +113,7 @@
 #define FREQ_CHIP_PAD 4
 #define TX_Y        118
 #define LINE_Y      174
-#define TONE_Y      184 // DMR: the TG; FM: the squelch, then the tone below
-#define CSS_Y       212
+#define TONE_Y      184 // DMR: the TG; FM: the tone, the squelch on the right
 #define S_METER_Y   250
 #define VALUE_X     (WIDGET_MARGIN + 70)
 #define LABEL_GAP   10
@@ -1078,12 +1077,18 @@ static void draw(void)
 
         int sql = (v->sql != 0) ? v->sql : settings.squelch_defaults[radio_band_of(v->rx_freq)];
 
-        snprintf(buffer, sizeof(buffer), "%d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
-        draw_info_line(TONE_Y, text(TEXT_SQUELCH), buffer);
+        // As the channel screen's line (channel_panel.c): the tone left, the squelch right
         if (tone != CODEPLUG_CSS_NONE) {
             tones_format(tone, buffer, sizeof(buffer));
-            draw_info_line(CSS_Y, text(TEXT_UI_TONE), buffer);
+            int32_t x = WIDGET_MARGIN + icons_draw(WIDGET_MARGIN, TONE_Y + 3, ICONS_TONE, THEME_COLOUR_TEXT_LABEL) + 8;
+
+            draw_text(x, TONE_Y, buffer, &font_roboto20, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
         }
+        snprintf(buffer, sizeof(buffer), "%d%%", (sql - SQUELCH_MIN) * SQUELCH_PERCENT_STEP);
+        draw_text(FB_WIDTH - WIDGET_MARGIN, TONE_Y + 2, buffer, &font_roboto17, FONT_ALIGN_RIGHT,
+                  THEME_COLOUR_TEXT_LABEL);
+        icons_draw(FB_WIDTH - WIDGET_MARGIN - font_text_width(&font_roboto17, buffer) - 4 - ICONS_SQUELCH_WIDTH,
+                   TONE_Y + ((font_roboto20.line_height - ICONS_SIZE) / 2) + 2, ICONS_SQUELCH, THEME_COLOUR_TEXT_LABEL);
     }
 
     if (digit_entry_active(&entry)) {

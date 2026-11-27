@@ -32,7 +32,7 @@
 #include <stdint.h>
 
 // MDC1200 (Motorola's 1200 baud FFSK signalling, the "brrp" of the old handhelds) single packets, ready for the
-// FD6818's FFSK 1200 / 1800 Hz transmitter (fd6818_tx_fsk()): the preamble, the sync, the coded data
+// FD6818's FFSK 1200 / 1800 Hz transmitter (trx_tx_fsk()): the preamble, the sync, the coded data
 #define MDC1200_PACKET_SIZE 22
 
 #define MDC1200_OP_PTT_ID   0x01 // with MDC1200_ARG_PRE: at the start of a transmission; with _POST: at its end

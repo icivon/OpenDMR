@@ -38,6 +38,7 @@
 #include "draw.h"
 #include "fonts.h"
 #include "menus.h"
+#include "trx.h"
 
 #define STRINGIFY(x)  #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -64,7 +65,9 @@ static void draw(void)
 {
     char built[32];
     const font_t *font = &font_roboto17;
-    int32_t y = LIST_VIEW_TOP + (4 * LIST_VIEW_ROW_HEIGHT) + 12;
+    char rf[24];
+    uint16_t rf_id, rf_3d;
+    int32_t y = LIST_VIEW_TOP + (5 * LIST_VIEW_ROW_HEIGHT) + 12;
     list_view_row_t row = {.icon = ICONS_COUNT};
 
     list_view_draw_title(text(TEXT_FIRMWARE_INFO), NULL);
@@ -87,6 +90,14 @@ static void draw(void)
     row.name = text(TEXT_UI_MODEL);
     row.value = BOARD_NAME;
     list_view_draw_row(3, &row);
+
+    // The RF chip found at power on, its ID and, when its synthesizer didn't lock (no transmitting), "no lock"
+    trx_start_ids(&rf_id, &rf_3d);
+    snprintf(rf, sizeof(rf), "%s %04X%s", trx_chip_name() ? trx_chip_name() : "?", (unsigned)rf_id,
+             trx_locked() ? "" : " no lock");
+    row.name = "RF chip";
+    row.value = rf;
+    list_view_draw_row(4, &row);
 
     draw_text(WIDGET_MARGIN, y, text(TEXT_CREDITS), font, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
     y += font->line_height + 4;

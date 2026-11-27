@@ -475,6 +475,9 @@ static void draw_refused(void)
 
         snprintf(big, sizeof(big), "%lu:%02lu", (unsigned long)(tot / 60), (unsigned long)(tot % 60));
         hint = tx.latched ? NULL : text(TEXT_UI_RELEASE_PTT); // latched: it closes by itself
+    } else if (tx.refused == RADIO_TX_RF_NO_LOCK) {
+        snprintf(big, sizeof(big), "%s", text(TEXT_RF_NO_LOCK));
+        hint = text(TEXT_UI_RF_NO_LOCK_HINT);
     } else if (tx.refused == RADIO_TX_RX_ONLY) {
         snprintf(big, sizeof(big), "%s", text(TEXT_RX_ONLY));
         hint = text(TEXT_UI_RX_ONLY_HINT);

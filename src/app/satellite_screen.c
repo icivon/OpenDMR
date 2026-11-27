@@ -187,6 +187,8 @@ static void enter(void *arg)
         predicted_shown = 0;
         if (has_clock && has_location && (satellite_load() > 0)) {
             satellite_predict_start(datetime_now());
+            predicted = satellite_predict_step(datetime_now(), 0); // kept from the last visit: the list at once
+            predicted_shown = satellite_predicted_count();
         }
     }
     if (has_clock && has_location && (satellite_count() > 0)) {
@@ -453,27 +455,57 @@ static void draw_list(void)
     bottom_bar_draw_soft_keys((entry_count > 0) ? text(TEXT_UI_SELECT) : NULL, text(TEXT_UI_BACK));
 }
 
-static void draw_track(const satellite_pass_t *pass, uint32_t now)
-{
-    satellite_look_t look;
-    int32_t last_x = 0;
-    int32_t last_y = 0;
+// The track's points on the polar plot, worked out once for a pass: each draw (every second, and at each signal
+// change with the squelch open) worked out all of them again, ~30 SGP4 steps, 60 ms of the UI task: the keys and
+// their beeps late, the countdown and the Doppler jumping (#104)
+#define TRACK_POINTS_MAX 128 // 42 minutes at TRACK_STEP_S; a longer pass: its points further apart
 
-    for (uint32_t t = pass->aos; t <= pass->los; t += TRACK_STEP_S) {
+static struct {
+    int sat;
+    uint32_t aos;
+    uint32_t los;
+    uint32_t step; // seconds between the points
+    int count;
+    int16_t x[TRACK_POINTS_MAX];
+    int16_t y[TRACK_POINTS_MAX];
+} track = {.sat = -1};
+
+static void track_work_out(const satellite_pass_t *pass)
+{
+    uint32_t span = pass->los - pass->aos;
+    satellite_look_t look;
+
+    track.sat = sat;
+    track.aos = pass->aos;
+    track.los = pass->los;
+    track.step = TRACK_STEP_S;
+    if ((span / track.step) >= TRACK_POINTS_MAX) {
+        track.step = (span / (TRACK_POINTS_MAX - 1)) + 1;
+    }
+    track.count = 0;
+    for (uint32_t t = pass->aos; (t <= pass->los) && (track.count < TRACK_POINTS_MAX); t += track.step) {
         int32_t x;
         int32_t y;
 
         satellite_look(sat, t, &look);
         gps_screen_sky_point(POLAR_CX, POLAR_CY, POLAR_R, look.azimuth, look.elevation, &x, &y);
-        if (t != pass->aos) {
-            bool done = (t <= now);
+        track.x[track.count] = (int16_t)x;
+        track.y[track.count] = (int16_t)y;
+        track.count++;
+    }
+}
 
-            if (done || ((t / TRACK_STEP_S) & 1)) {
-                draw_line(last_x, last_y, x, y, THEME_COLOUR_RX, done);
-            }
+static void draw_track(const satellite_pass_t *pass, uint32_t now)
+{
+    if ((track.sat != sat) || (track.aos != pass->aos) || (track.los != pass->los)) {
+        track_work_out(pass);
+    }
+    for (int i = 1; i < track.count; i++) {
+        bool done = ((track.aos + (uint32_t)i * track.step) <= now);
+
+        if (done || (i & 1)) {
+            draw_line(track.x[i - 1], track.y[i - 1], track.x[i], track.y[i], THEME_COLOUR_RX, done);
         }
-        last_x = x;
-        last_y = y;
     }
 }
 

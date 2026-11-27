@@ -39,7 +39,8 @@
 // Menus and settings as tables (docs/ui-design.md 6.5): the list screen shows a ui_list_t, pushed with
 // ui_push(&list_screen, (void *)&a_list). UP / DOWN move, LEFT / RIGHT change the value of the selected item
 // (decrease / increase), so does the rotary (it never moves); the left key opens or switches it, the right key goes
-// back. A change marks the settings dirty: they are saved when the list is left.
+// back. A change is applied at once, but kept only with OK: from the first one the soft keys are OK (saved, back) and
+// Cancel (everything as before the first change, back; held: home too), and the left key opens nothing meanwhile.
 
 typedef enum {
     UI_ITEM_SCREEN, // opens target (a ui_screen_t) with arg; target NULL: the "not yet" page
@@ -125,6 +126,11 @@ void ui_list_open_item(const ui_item_t *item);
 
 // The lists' SK2 + digit (the quick keys, set by the app); true: the event was taken. NULL: none
 extern bool (*ui_list_quick_item)(const ui_event_t *ev, const ui_item_t *item);
+// OK / Cancel (set by the app, config_snapshot.c): a copy of the settings taken before a list's first change, put back
+// on Cancel, dropped on OK. NULL: changes are kept at once
+extern void (*ui_list_settings_take)(void);
+extern void (*ui_list_settings_restore)(void);
+extern void (*ui_list_settings_drop)(void);
 extern bool (*ui_list_quick_pick)(const ui_event_t *ev, const ui_pick_list_t *pick, int index);
 
 extern const ui_screen_t not_yet_screen;   // arg: the text id of the title, as (void *)(uintptr_t)

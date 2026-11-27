@@ -59,6 +59,7 @@ typedef enum {
     RADIO_TX_RX_ONLY,
     RADIO_TX_RX_MODE,     // AM, USB, LSB: receive only
     RADIO_TX_OUT_OF_BAND, // not a frequency of the radio, or out of the band limits of the settings
+    RADIO_TX_RF_NO_LOCK,  // the FD6818's synthesizer didn't lock at power on (trx_locked()): no transmitting
 } radio_tx_check_t;
 
 radio_tx_check_t radio_tx_check(void); // can the channel given transmit (the transmit screen shows why not)

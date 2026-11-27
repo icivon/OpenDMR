@@ -31,7 +31,8 @@
 #include "framebuffer.h"
 #include "hw.h"
 
-// Each icon is drawn as text: '#' is the colour, anything else is left as it is. All rows of an icon have the same length.
+// Each icon is drawn as text: '#' is the colour, '=' the theme's accent colour, anything else is left as it is. All rows
+// of an icon have the same length.
 typedef struct {
     uint8_t width;
     const char *rows[ICONS_SIZE];
@@ -219,7 +220,13 @@ static const iconArt_t ICONS[ICONS_COUNT] FLASH_CONST = {
       " ###            ### ", " # ##          ## # ", " #  ##        ##  # ", " #   ##      ##   # ",
       " #    ##    ##    # ", " #     ######     # ", " #                # ", " #                # ",
       " #                # ", " ################## ", "                    ", "                    ",
-      "                    ", "                    "}}};
+      "                    ", "                    "}},
+    {// ICONS_SQUELCH: signal bars, the opening level across them ('=': the accent colour); square, so 14 wide
+     14,
+     {"              ", "              ", "              ", "          ##  ", "          ##  ", "          ##  ",
+      "       ## ##  ", "============= ", "       ## ##  ", "    ## ## ##  ", "    ## ## ##  ", "    ## ## ##  ",
+      " ## ## ## ##  ", " ## ## ## ##  ", " ## ## ## ##  ", "              ", "              ",
+      "              "}}};
 
 int32_t icons_draw(int32_t x, int32_t y, icons_id_t icon, theme_colour_t colour)
 {
@@ -229,6 +236,7 @@ int32_t icons_draw(int32_t x, int32_t y, icons_id_t icon, theme_colour_t colour)
 
     const iconArt_t *art = &ICONS[icon];
     uint16_t c = theme_colour(colour);
+    uint16_t accent = theme_colour(THEME_COLOUR_ACCENT);
 
     for (int32_t row = 0; row < ICONS_SIZE; row++) {
         const char *p = art->rows[row];
@@ -236,6 +244,8 @@ int32_t icons_draw(int32_t x, int32_t y, icons_id_t icon, theme_colour_t colour)
         for (int32_t col = 0; (col < art->width) && p[col]; col++) {
             if (p[col] == '#') {
                 fb_set_pixel(x + col, y + row, c);
+            } else if (p[col] == '=') {
+                fb_set_pixel(x + col, y + row, accent);
             }
         }
     }

@@ -33,7 +33,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "util.h"
-#include "fd6818.h"
+#include "trx.h"
 #include "settings.h"
 #include "codeplug.h"
 #include "dmr.h"
@@ -86,7 +86,7 @@ static void rx_power(bool on)
         rx_settle(ECO_SETTLE_MS);
     } else {
         lna(false, 0);
-        fd6818_write(0x30, 0x0000); // radioPowerOff(): the FD6818 idle
+        trx_idle(); // radioPowerOff()
     }
 }
 

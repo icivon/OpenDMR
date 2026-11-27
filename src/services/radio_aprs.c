@@ -36,7 +36,7 @@
 #include <string.h>
 #include "FreeRTOS.h"
 #include "task.h"
-#include "fd6818.h"
+#include "trx.h"
 #include "systime.h"
 #include "hotspot.h"
 #include "radio_internal.h"
@@ -218,18 +218,18 @@ void aprs_frame(void)
     uint32_t start;
 
     vTaskDelay(pdMS_TO_TICKS(APRS_TX_DELAY_MS));
-    fd6818_tx_tone(mark, 0, APRS_TONE_GAIN);
+    trx_tx_tone(mark, 0, APRS_TONE_GAIN);
     last = mark;
     start = systime_get_us();
     for (uint32_t i = 0; i < aprs_bit_count; i++) {
         uint16_t hz = ((aprs_bits[i / 8] >> (i % 8)) & 1) ? space : mark;
 
         if (hz != last) {
-            fd6818_tx_tone_hz(hz);
+            trx_tx_tone_hz(hz);
             last = hz;
         }
         while ((int32_t)(systime_get_us() - (start + (uint32_t)(((uint64_t)(i + 1) * 1000000U) / baud))) < 0) {
         }
     }
-    fd6818_tx_tone_end();
+    trx_tx_tone_end();
 }

@@ -35,6 +35,7 @@
 #include "dmr.h"
 #include "systime.h"
 #include "p25_phy.h"
+#include "trx.h"
 
 #define QSODATA_TIMER_TIMEOUT            2400
 #define QSODATA_RX_BEEP_TIMER_TIMEOUT   (QSODATA_TIMER_TIMEOUT - 1000)
@@ -114,7 +115,7 @@ static int wakeSilentSlots = 0;
 void HRC7000SetRepeaterMode(bool rmo)
 {
 	repeaterMode = rmo;
-	*RF_MODE = (rmo ? 0x03269060 : 0x03269860);
+	*RF_MODE = (rmo ? 0x03269060 : 0x03269860) & (trx_rx_inverted() ? ~0u : ~0x8000u); // bit 15: trx.h
 	*RF_CONTROL = (rmo ? 0x00041F1A : 0x00041F0A); // direct: the Tx lead of repeater mode (modem.c RF_CONTROL_DIRECT)
 }
 

@@ -41,13 +41,7 @@
 #define ADDRESS 0x6140
 #define MAGIC   0x3154504F // "OPT1"
 
-typedef struct {
-    uint32_t magic;
-    uint32_t bits;
-    uint8_t theme;           // 0xFF: none chosen (a block written before it)
-    uint8_t aprs_gateway[3]; // 24 bit DMR ID, big endian; 0 / 0xFFFFFF: use the default
-    uint8_t sms_format;      // the DMR text messages' format (dmr_sms.h); another value (a block before it): Motorola
-} block_t;
+typedef extra_options_block_t block_t;
 
 static block_t block;
 
@@ -80,6 +74,19 @@ void extra_option_set(uint32_t bit, bool on)
 
     if (bits != block.bits) {
         block.bits = bits;
+        (void)flash_write(ADDRESS, (const uint8_t *)&block, sizeof(block));
+    }
+}
+
+void extra_options_get_block(extra_options_block_t *copy)
+{
+    *copy = block;
+}
+
+void extra_options_set_block(const extra_options_block_t *copy)
+{
+    if (memcmp(copy, &block, sizeof(block)) != 0) {
+        block = *copy;
         (void)flash_write(ADDRESS, (const uint8_t *)&block, sizeof(block));
     }
 }

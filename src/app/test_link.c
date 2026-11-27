@@ -51,7 +51,7 @@
 #include "codeplug.h"
 #include "codeplug_text.h"
 #include "radio.h"
-#include "fd6818.h"
+#include "trx.h"
 #include "tx_target.h"
 #include "radio_hooks.h"
 #include "settings.h"
@@ -224,7 +224,12 @@ static uint32_t state(char *text, uint32_t size)
     put(&o, "noise", "%u", (unsigned)radio_noise());       // FD6818 0x65, the last reading
     put(&o, "lockouts", "%u,%u,%d", (unsigned)scan_skipped_channels.count, (unsigned)scan_skipped_frequencies.count,
         scan_saved_count());
-    put(&o, "rf_chip", "%04x", (unsigned)fd6818_chip_id()); // 4819 FD6818, 4829 FD6818B
+    uint16_t rf_id, rf_3d;
+
+    trx_start_ids(&rf_id, &rf_3d);
+    put(&o, "rf_lock", "%d", trx_locked() ? 1 : 0); // 0: the synthesizer didn't lock at power on, no transmitting
+    put(&o, "rf_chip", "%04x,%04x", (unsigned)rf_id, (unsigned)rf_3d); // FD6818 0x00 and 0x3D at start
+    put(&o, "rf_name", "%s", trx_chip_name() ? trx_chip_name() : "?");
     put(&o, "aprs_via", "%u", (unsigned)extra_options_aprs_via());
     put(&o, "aprs_gateway", "%u", (unsigned)extra_options_aprs_dmr_gateway());
     uint32_t flags;

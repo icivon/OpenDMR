@@ -36,7 +36,7 @@
 #include "hw.h"
 #include "hal.h"
 #include "leds.h"
-#include "fd6818.h"
+#include "trx.h"
 #include "modem.h"
 #include "systime.h"
 #include "p25_phy.h"
@@ -113,7 +113,7 @@ static void rf_on_wait(uint32_t wait)
 {
     lna(false, 0);
     rf_wait(wait);
-    fd6818_dmr_burst_tx(rs.channel.tx_freq);
+    trx_dmr_burst_tx(rs.channel.tx_freq);
     rf_pa_up();
 }
 
@@ -157,7 +157,7 @@ static void rf_off_now(void)
     rf_on_air = false;
     hrc7000TraceRf(6);
     rf_wait(700);
-    fd6818_dmr_burst_rx(rs.channel.rx_freq);
+    trx_dmr_burst_rx(rs.channel.rx_freq);
     lna(true, rs.channel.rx_freq);
     rf_wait(50);
 }
@@ -229,9 +229,9 @@ static void rf_gate(void)
             rf_off_now();
         } else if (lead) {
             lna(false, 0);
-            fd6818_dmr_burst_tx(rs.channel.tx_freq);
+            trx_dmr_burst_tx(rs.channel.tx_freq);
             if (!wait_until(at + lead)) { // stopped before the PA: the FD6818 back to receive
-                fd6818_dmr_burst_rx(rs.channel.rx_freq);
+                trx_dmr_burst_rx(rs.channel.rx_freq);
                 lna(true, rs.channel.rx_freq);
                 break;
             }
@@ -286,15 +286,15 @@ static void rf_task_main(void *arg)
         }
         if (asked & RF_SETUP) {
             // radioSetTx(): the band of the Tx frequency, the modem's DMR calibration, the mic to the modem (vocoder)
-            fd6818_set_frequency(rs.channel.tx_freq, false);
-            fd6818_transmit_prepare();
+            trx_set_frequency(rs.channel.tx_freq, false);
+            trx_transmit_prepare();
             dmr_modem_calibration();
             gpio_output(PIN_MIC_MUT, false);
         }
         if ((asked & RF_SETUP) && pa_later) {
             pa_later = false;
             lna(false, 0);
-            fd6818_dmr_burst_tx(rs.channel.tx_freq); // the PA by the gate (radio_phy_tx_gate_at())
+            trx_dmr_burst_tx(rs.channel.tx_freq); // the PA by the gate (radio_phy_tx_gate_at())
         } else if (asked & (RF_SETUP | RF_ON)) {
             rf_on();
         }
