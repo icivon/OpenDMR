@@ -50,7 +50,16 @@
 #define CONTROL_RX    0xBFF1
 #define CONTROL_TX    0xC1FE
 
-#define AF_MUTED      0x6042
+// REG_AF: 0x6042 is the FD6818's mute and 0x6142 its FM audio out (source 1). The FD6818B (DM-36) holds the FM audio
+// out in 0x6042 (its audio source 0, the stock firmware's FM value at 0x0300E952) and mutes with 0x6040 (bit 1 clear,
+// the stock's 0x0306A272): written 0x6142 it played a loud noise instead of the voice, and 0x6042 never muted.
+#ifndef BOARD_AF_MUTED
+#define BOARD_AF_MUTED 0x6042
+#endif
+#ifndef BOARD_AF_FM
+#define BOARD_AF_FM    0x1 // the audio source the FM demodulator takes (bits 11:8)
+#endif
+#define AF_MUTED      BOARD_AF_MUTED
 #define AF_OUT_MASK   0x0F00 // REG_AF bits 11:8: the audio out
 #define DMR_50_TX     0x3B18 // 0x50 while a DMR burst is sent (stock 0x2b5a8)
 

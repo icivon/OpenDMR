@@ -46,6 +46,19 @@
  * "DMR mic" sound option (settings.mic_gain_dmr, 0..20 dB, 16 by default), the FM one "FM mic". */
 #define BOARD_MIC_ANALOG_BOOST 0x04
 
+/* REG_AF (0x47), from the stock DM-36 firmware: the FM audio out is 0x6042 (audio source 0, written at 0x0300E952),
+ * the mute 0x6040 (bit 1 clear, 0x0306A272). The DM-32's values are 0x6142 (source 1) and 0x6042; on the FD6818B
+ * the source 1 is not the demodulated voice - written there the receiver played a loud noise, and 0x6042, thought a
+ * mute, never muted (the standby noise, the burst on a channel change). */
+#define BOARD_AF_MUTED 0x6040
+#define BOARD_AF_FM    0x0
+
+/* The audio switch (0x2F, GPIOB bit 15): the DM-32 drives it high in FM (the speaker straight from the FD6818). The
+ * DM-36 stock firmware keeps it low in every mode (its GPIO init writes pin 47 = 0) and picks the audio source with
+ * the FD6818's own registers (0x2E/0x2F/0x51), so on this board the pad stays low: driven high the speaker sat on an
+ * input nothing drove - the loud noise in standby that no AF mute stopped, and none of the demodulated audio. */
+#define BOARD_AUDIO_SW_FM_HIGH 0
+
 /* ---------------- keypad wiring (measured on real hardware, 2026-11-25) ----------------
  * The DM-36 matrix is wired differently: the physical keys sit at other row/column
  * positions than on the DM-32. Translate each measured position to the logical key

@@ -63,7 +63,7 @@
 // FM 1, AM 7, USB 5 ("baseband 2") with the IF at 0, the chip then a product detector. LSB is the same setting: with
 // the IF at 0 both sidebands come through, the tuning picks one (fagci's firmware does the same). The AFC off in every
 // mode (fd68xx_set_demod()).
-#define AF_FM     0x1
+#define AF_FM     BOARD_AF_FM
 #define AF_AM     0x7
 #define AF_SSB    0x5
 #define REG_IF    0x3D
@@ -80,7 +80,8 @@
 
 static bool id_read;           // fd68xx_read_id() reset the chip and read its ID
 static uint16_t chip_id;
-static uint16_t af_on = AF_MUTED | (AF_FM << 8); // 0x6142: the receive audio out
+#define AF_ENABLE 0x0002 // REG_AF bit 1: the audio output on (the mute value has it clear on the FD6818B)
+static uint16_t af_on = AF_MUTED | AF_ENABLE | (AF_FM << 8); // DM-32: 0x6142, DM-36: 0x6042
 static uint16_t if_default;    // 0x3D and 0x2F as the chip starts (fd68xx_note_defaults()), for FM
 static uint16_t reg_2f_default;
 
@@ -169,7 +170,7 @@ void fd68xx_set_demod(trx_demod_t new_demod)
 {
     bool am = (new_demod == TRX_DEMOD_AM);
 
-    af_on = (uint16_t)(AF_MUTED | ((am ? AF_AM : ((new_demod == TRX_DEMOD_SSB) ? AF_SSB : AF_FM)) << 8));
+    af_on = (uint16_t)(AF_MUTED | AF_ENABLE | ((am ? AF_AM : ((new_demod == TRX_DEMOD_SSB) ? AF_SSB : AF_FM)) << 8));
     trx_spi_write(REG_AF, AF_MUTED);
     trx_spi_write(REG_IF, (new_demod == TRX_DEMOD_SSB) ? 0 : if_default);
     // The AFC off in every mode, as the FD6818 manual says with a TCXO ("AFC 设置"; the radio's is calibrated). On, with

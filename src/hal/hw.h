@@ -135,6 +135,22 @@
 #ifndef BOARD_MIC_ANALOG_BOOST
 #define BOARD_MIC_ANALOG_BOOST 0x05
 #endif
+
+// The speaker amplifier (PIN_AUDIO_AMP): 1 on the DM-32. A board whose enable is wired low sets BOARD_AUDIO_AMP_INVERTED;
+// written the DM-32 way the amplifier is then on whenever nothing is playing (the standby noise, the burst on a channel
+// change) and off while the audio plays (no voice under a signal, the signalling still fine).
+#ifndef BOARD_AUDIO_AMP_INVERTED
+#define BOARD_AUDIO_AMP_INVERTED 0
+#endif
+#define PIN_AUDIO_AMP_LEVEL(on) ((bool)((on) != (BOARD_AUDIO_AMP_INVERTED != 0)))
+
+// The audio switch (PIN_AUDIO_SW): the DM-32 takes the speaker straight from the FD6818 in FM (high) and through the
+// baseband otherwise (low). The DM-36 stock firmware keeps the pad low in every mode (its GPIO init, 0x03001C4F) and
+// selects the source with the FD6818's own audio registers instead; driven high there the speaker sat on the wrong
+// input - the loud noise in standby that no AF mute stopped.
+#ifndef BOARD_AUDIO_SW_FM_HIGH
+#define BOARD_AUDIO_SW_FM_HIGH 1
+#endif
 #define PIN_LCD_NRESET  BOARD_PIN_LCD_NRESET
 #define PIN_LCD_RD      BOARD_PIN_LCD_RD
 #define PIN_KEYPAD_ROW0 BOARD_PIN_KEYPAD_ROW0

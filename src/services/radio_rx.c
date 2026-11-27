@@ -174,14 +174,14 @@ static volatile bool audio_sw_broadcast = false;
 
 static void audio_switch(void)
 {
-    gpio_output(PIN_AUDIO_SW, (audio_sw_fm || audio_sw_broadcast) && !beep_path);
+    gpio_output(PIN_AUDIO_SW, BOARD_AUDIO_SW_FM_HIGH && (audio_sw_fm || audio_sw_broadcast) && !beep_path);
 }
 
 static void RAM_CODE audio_amp(bool on)
 {
     taskENTER_CRITICAL();
     rs.audio_needs_amp = on;
-    gpio_output(PIN_AUDIO_AMP, rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp);
+    gpio_output(PIN_AUDIO_AMP, PIN_AUDIO_AMP_LEVEL(rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp));
     taskEXIT_CRITICAL();
 }
 
@@ -328,7 +328,10 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
     // The mic to the FD6818 for FM (high), to the modem's codec for DMR (low), set with the mode as the stock firmware
     // does: switched at each DMR transmission, it put a DC step and a click (to -32000) into the first 100 ms of the
     // capture, sent as a pop at the start of every transmission
-    gpio_output(PIN_MIC_MUT, is_analog() ? PIN_MIC_MUT_TO_FD6818 : PIN_MIC_MUT_TO_MODEM);
+    // Receiving: the mic parked on the FD6818 whatever the mode. Left on the modem's codec the capture (AUDIO_CONTROL
+    // bit 4, still set from the last transmission) put the room into the receive path: a loud noise in standby and on
+    // every channel change, and nothing but noise under a signal (the FD6818's AF itself is muted there)
+    gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_FD6818);
     memset(samples, 0, sizeof(samples));
     signal_shown = 0;
     if (rs.dmr_running && (!rs.has_channel || is_analog())) {
@@ -354,6 +357,11 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
         modem_set_frequency_calibration(cal->valid, cal->osc_tune, cal->rx_adjust, factory_cal_mod_bias(rs.channel.tx_freq));
         receive_on();
     } else {
+        // The FM audio path off (AUDIO_CONTROL bit 6): left on from an analog channel it kept the FD6818's
+        // discriminator on the speaker, so every digital mode played the raw 4FSK as a loud noise while the modem
+        // decoded the ID and the signal meter fine. Only soundSendData()'s playback path cleared it before, and only
+        // once a call's audio started.
+        modem_fm_audio(false);
         // DMR (trxSetModeAndBandwidth(), trxSetFrequency()): the FD6818 DMR table the first time, the engine stopped
         // while the frequency changes, then started on the channel
         if (rs.dmr_running) {
@@ -611,7 +619,12 @@ void RAM_CODE squelch_check(void)
     if (!rs.speaker_open && tone_ok) {
         rs.speaker_open = true;
         css_missing = 0;
-        modem_fm_audio(true);
+        // The FM audio path only for the analog modes: in a digital one the codec's playback drives the speaker, and
+        // this path put the FD6818's raw discriminator on it (a loud noise under every signal, the ID and the signal
+        // meter fine)
+        if (is_analog()) {
+            modem_fm_audio(true);
+        }
         audio_amp(true);
         rx_beep_begin();
         post_signal();
@@ -658,7 +671,7 @@ void RAM_CODE radio_dmr_audio(bool on)
     uint32_t psr = irq_save();
 
     rs.audio_needs_amp = on;
-    gpio_output(PIN_AUDIO_AMP, rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp);
+    gpio_output(PIN_AUDIO_AMP, PIN_AUDIO_AMP_LEVEL(rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp));
     irq_restore(psr);
 }
 
@@ -675,7 +688,7 @@ void radio_beep_amp(bool on)
 {
     taskENTER_CRITICAL();
     rs.beep_needs_amp = on;
-    gpio_output(PIN_AUDIO_AMP, rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp);
+    gpio_output(PIN_AUDIO_AMP, PIN_AUDIO_AMP_LEVEL(rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp));
     taskEXIT_CRITICAL();
 }
 
@@ -699,7 +712,7 @@ void radio_broadcast_amp(bool on)
     }
     taskENTER_CRITICAL();
     rs.broadcast_needs_amp = on;
-    gpio_output(PIN_AUDIO_AMP, rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp);
+    gpio_output(PIN_AUDIO_AMP, PIN_AUDIO_AMP_LEVEL(rs.audio_needs_amp || rs.beep_needs_amp || rs.broadcast_needs_amp));
     taskEXIT_CRITICAL();
     if (!on && audio_sw_broadcast) {
         vTaskDelay(pdMS_TO_TICKS(BROADCAST_AMP_STOP_MS));
