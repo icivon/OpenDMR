@@ -52,6 +52,9 @@
 #define BOARD_PIN_KEY_1       49  // column 0
 #define BOARD_PIN_KEY_3       51  // column 2, also SK1
 #define BOARD_PIN_KEY_4       52  // column 3, also SK2
+// Side buttons: on the DM-32 they double as keypad columns 2 and 3.
+#define BOARD_PIN_SK1         BOARD_PIN_KEY_3
+#define BOARD_PIN_SK2         BOARD_PIN_KEY_4
 #define BOARD_PIN_PTT         43
 #define BOARD_KEY_ROWS        5
 #define BOARD_KEY_COLUMNS     4

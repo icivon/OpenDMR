@@ -69,6 +69,11 @@ void keys_init(void)
         gpio_input(PIN_KEY_1 + column);
     }
     gpio_input(PIN_PTT);
+#if defined(BOARD_DM36)
+    // The side buttons are not keypad columns on the DM-36.
+    gpio_input(BOARD_PIN_SK1);
+    gpio_input(BOARD_PIN_SK2);
+#endif
 }
 
 uint32_t keys_read_buttons(void)
@@ -77,12 +82,21 @@ uint32_t keys_read_buttons(void)
     uint32_t result = 0;
 
     settle();
+#if defined(BOARD_DM36)
+    if (((GPIO_EXT(BOARD_PIN_SK1) & GPIO_BIT(BOARD_PIN_SK1)) == 0)) {
+        result |= KEYS_BUTTON_SK1;
+    }
+    if (((GPIO_EXT(BOARD_PIN_SK2) & GPIO_BIT(BOARD_PIN_SK2)) == 0)) {
+        result |= KEYS_BUTTON_SK2;
+    }
+#else
     if (column_down(PIN_KEY_3 - PIN_KEY_1)) {
         result |= KEYS_BUTTON_SK1;
     }
     if (column_down(PIN_KEY_4 - PIN_KEY_1)) {
         result |= KEYS_BUTTON_SK2;
     }
+#endif
 
     // The PTT line is down for real when it stays down: checked once when it goes down, then kept until it goes up
     if ((GPIO_EXT(PIN_PTT) & GPIO_BIT(PIN_PTT)) != 0) {
@@ -110,6 +124,10 @@ uint32_t keys_read_keypad(void)
     uint32_t result = 0;
     bool any_down = false;
 
+#if defined(BOARD_DM36)
+    (void)buttons; // no column is shared with the side buttons on this board
+#endif
+
     panel_bus_take();
     uint32_t mux = IO_DIPLEX2;
 
@@ -132,10 +150,14 @@ uint32_t keys_read_keypad(void)
             gpio_reset(PIN_KEYPAD_ROW0 + row);
             settle();
             for (int column = 0; column < COLUMNS; column++) {
+#if defined(BOARD_DM36)
+                // The side buttons are separate GPIOs here: they hold no keypad column down.
+#else
                 // a side button holds its column down: no key of that column can be read
                 if (((column == 2) && (buttons & KEYS_BUTTON_SK1)) || ((column == 3) && (buttons & KEYS_BUTTON_SK2))) {
                     continue;
                 }
+#endif
                 int index = (row * COLUMNS) + column;
 
                 if ((index < KEYS_COUNT) && column_down(column)) {
