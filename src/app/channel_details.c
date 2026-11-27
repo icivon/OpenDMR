@@ -45,6 +45,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "board.h"
 #include "widgets.h"
 #include "draw.h"
 #include "fonts.h"
@@ -862,6 +863,10 @@ static bool handle(const ui_event_t *ev)
         return false;
     }
 
+    if (press && BOARD_IS_EXTRA_VALUE_CHANGE_KEY(ev->key)) {
+        change(item, BOARD_EXTRA_VALUE_CHANGE_STEP(ev->key), (ev->type == UI_EVENT_KEY_REPEAT), ev->modifiers);
+        return true;
+    }
     if (press && ((ev->key == UI_KEY_LEFT) || (ev->key == UI_KEY_RIGHT))) {
         change(item, ((ev->key == UI_KEY_RIGHT) ? 1 : -1), (ev->type == UI_EVENT_KEY_REPEAT), ev->modifiers);
         return true;

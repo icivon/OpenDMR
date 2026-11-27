@@ -42,6 +42,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "util.h"
+#include "board.h"
 #include "widgets.h"
 #include "text.h"
 #include "list_screen.h"
@@ -443,6 +444,10 @@ static bool handle(const ui_event_t *ev)
         for (int n = 0; n < ((ev->steps < 0) ? -ev->steps : ev->steps); n++) {
             change(item, ((ev->steps > 0) ? 1 : -1));
         }
+        return true;
+    }
+    if (press && BOARD_IS_EXTRA_VALUE_CHANGE_KEY(ev->key)) {
+        change(item, BOARD_EXTRA_VALUE_CHANGE_STEP(ev->key));
         return true;
     }
     if (press && ((ev->key == UI_KEY_LEFT) || (ev->key == UI_KEY_RIGHT))) {

@@ -28,4 +28,11 @@
 #define BOARD_CPS_REPLY_OUT(data, length) ((void)0)
 #endif
 
+/* Boards without LEFT / RIGHT may add their own keys for changing a value on
+ * list-like screens. The default keeps the DM-32 code path byte-for-byte. */
+#ifndef BOARD_IS_EXTRA_VALUE_CHANGE_KEY
+#define BOARD_IS_EXTRA_VALUE_CHANGE_KEY(key) (0)
+#define BOARD_EXTRA_VALUE_CHANGE_STEP(key)   (0)
+#endif
+
 #endif

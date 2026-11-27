@@ -41,6 +41,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "board.h"
 #include "widgets.h"
 #include "codeplug_text.h"
 #include "settings.h"
@@ -492,6 +493,9 @@ static bool details_handle_edit(const ui_event_t *ev)
         return changed;
     }
     if ((ev->type == UI_EVENT_KEY_PRESS) || (ev->type == UI_EVENT_KEY_REPEAT)) {
+        if (BOARD_IS_EXTRA_VALUE_CHANGE_KEY(ev->key)) {
+            return details_change(*row, BOARD_EXTRA_VALUE_CHANGE_STEP(ev->key));
+        }
         switch (ev->key) {
             case UI_KEY_UP:
             case UI_KEY_DOWN:

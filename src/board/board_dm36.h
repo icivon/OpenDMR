@@ -59,6 +59,14 @@ static inline int dm36_key_index(int index)
     }
 }
 
+/* DM-36 has no LEFT / RIGHT keys. On list-like screens * and # add the DM-32
+ * LEFT / RIGHT "change the selected value" roles. Other screens keep their own
+ * * / # functions; shared files only apply this hook where DM-32 used LEFT /
+ * RIGHT to change a value. */
+#define BOARD_IS_EXTRA_VALUE_CHANGE_KEY(key) \
+    (((key) == KEYS_STAR) || ((key) == KEYS_HASH))
+#define BOARD_EXTRA_VALUE_CHANGE_STEP(key) (((key) == KEYS_HASH) ? 1 : -1)
+
 /* Stock 0x3011cc8/0x301243c: rows 71-75 are driven as GPIO by IO_DIPLEX2
  * bit[15:9] (0xFE00) and columns are GPIOB_EXT bit[20:17] (pins 49-52). */
 #undef  BOARD_PIN_KEYPAD_ROW0
@@ -105,8 +113,13 @@ extern trx_driver_t trx_dm36;
 
 /* DM-36 audio quirks: the FD6818B AF output shares the speaker node with the
  * baseband beep path; mute it while a prompt plays. Its amplifier also starts
- * slower than the DM-32's. */
-#define BOARD_BEEP_PATH_AF_OUT(on, carrier) trx_af_out(!(on) && (carrier))
+ * slower than the DM-32's.
+ *
+ * In the digital modes the AF output carries the discriminator to the baseband
+ * (0x47 = 0x6943): it must not be written there, a beep would mute the
+ * digital receive (the audio out of the FM value) until the next burst. */
+#define BOARD_BEEP_PATH_AF_OUT(on, carrier) \
+    do { if (is_analog()) { trx_af_out(!(on) && (carrier)); } } while (0)
 #define BOARD_AMP_START_MS      120
 
 /* CPS replies are mirrored to the LytLink UART2 link once it is up. */

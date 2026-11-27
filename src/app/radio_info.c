@@ -40,6 +40,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "util.h"
+#include "board.h"
 #include "widgets.h"
 #include "draw.h"
 #include "fonts.h"
@@ -326,7 +327,8 @@ static bool handle(const ui_event_t *ev)
         return false;
     }
     if (page == ITEM_GRAPH) {
-        if ((press && ((ev->key == UI_KEY_LEFT) || (ev->key == UI_KEY_RIGHT))) || (ev->type == UI_EVENT_ROTARY)) {
+        if ((press && ((ev->key == UI_KEY_LEFT) || (ev->key == UI_KEY_RIGHT))) ||
+            (press && BOARD_IS_EXTRA_VALUE_CHANGE_KEY(ev->key)) || (ev->type == UI_EVENT_ROTARY)) {
             graph_dots = !graph_dots;
             return true;
         }

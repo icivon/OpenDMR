@@ -29,6 +29,22 @@
 #define AF_DMR        0x6943 // REG_AF in DMR receive: the raw audio out to the baseband
 #define BANDWIDTH_DMR 0x0048 // the DM-36 stock firmware (0x0300f26e), not the DM-32's 0x4048
 
+// The FD6818B's own words, where the shared ones (trx_fd68xx.c) are the FD6818's:
+// the bandwidth (0x43): 25 kHz FM 0x3028, 12.5 kHz FM 0x3048, 6.25 kHz (SSB) 0x205C. The shared
+// fd68xx_set_bandwidth() writes the FD6818's 0x4008 for 12.5 kHz and 0x3658 for SSB: a different chip's words.
+// The DM-36 stock firmware's four words are 0x3048, 0x3028, 0x205C and 0x2028 (the FM 12.5 kHz, the FM 25 kHz and
+// two the stock never selects), the DM-1801 Pro's the same (hardware-dm1801pro.md 5.2).
+#define BANDWIDTH_25   0x3028
+#define BANDWIDTH_12_5 0x3048
+#define BANDWIDTH_6_25 0x205C
+
+// The mic gain (0x7D): the FD6818B's encoding, not the FD6818's. The shared fd68xx_set_mic_gain() writes
+// 0xE340 | gain: the FD6818's receive digital gain 3 (bits 12:8) and its mic step table 22/24/26/28/30. The FD6818B:
+// the receive digital gain 9 and the mic step table 31/34/38/41/44 (RadioFoundry's set-up B, the DM-32's newer RF
+// section: docs/spec/hardware-dm32.md 8.10; their boards/dm32/radio_dm32.c writes 0xE92C on it).
+#define MIC_GAIN_BASE    0xE900 // the receive digital gain 9
+#define MIC_GAIN_DEFAULT 0xE92C // as the set-up B: the mic step 44
+
 // Power on: the DM-36 stock firmware's FD6818B init (0x0300ed96), value by value
 static const fd68xx_setting_t init_settings[] = {
     {0x00, 0x8000}, {0x00, 0x0000}, {0x37, 0x9D1F},
@@ -42,6 +58,9 @@ static const fd68xx_setting_t init_settings[] = {
     {0x09, 0x006F}, {0x09, 0x106B}, {0x09, 0x2067}, {0x09, 0x3062}, {0x09, 0x4050}, {0x09, 0x5047},
     {0x09, 0x603A}, {0x09, 0x702C}, {0x09, 0x8041}, {0x09, 0x9037}, {0x09, 0xA025}, {0x09, 0xB017},
     {0x09, 0xC0E4}, {0x09, 0xD0CB}, {0x09, 0xE0B5}, {0x09, 0xF09F},
+    // The mic gain: the FD6818B's receive digital gain 9 (the FD6818's is 3). The stock firmware doesn't write 0x7D
+    // at all (it writes it with another function); the value is the one the FD6818B's set-up B uses (RadioFoundry).
+    {0x7D, MIC_GAIN_DEFAULT},
 };
 
 // After the modem init: the FM setup of the stock firmware (0x37 = 0x9D1F, 0x48 = 0xB386)
@@ -64,9 +83,14 @@ static const fd68xx_setting_t fm_settings[] = {
 // 0x50 is not written here (the stock's DMR table doesn't either): on the FD6818B its bit 15 is the analog
 // transmit (the stock writes 0xBB20 around the transmit and 0x3B20 elsewhere, as the FD6818B's tx_on() does),
 // not the FD6818's raw baseband. The raw audio of the digital modes comes with 0x47 = 0x6943.
+// 0x48 is the FD6818B's set-up B word (0xB2FD), not the stock's 0xB2F5: the difference is the DAC gain field
+// (5 against 13, about 2 dB a step). The digital modes are demodulated in software here (the discriminator from the
+// chip's audio output: dmr_soft.c, nxdn_radio.c, m17_radio.c, p25_phy.c), so the level into the baseband matters:
+// the DM-32's DMR word (0xBBBF) has the DAC gain 15, the stock's 5 is about 20 dB under it. The FD6818B's set-up
+// B was checked on radios both ways (RadioFoundry: 0x6943 / 0xB2FD).
 static const fd68xx_setting_t dmr_settings[] = {
     {0x31, 0x0000}, {0x42, 0x6F5A}, {0x2A, 0x6600}, {0x47, 0x0000}, {0x30, 0x0000}, {0x13, 0x03FF}, {0x47, 0x6740},
-    {0x48, 0xB2F5}, {0x7E, 0xB03F}, {0x2B, 0x00E0}, {0x43, 0x0048}, {0x78, 0x6968}, {0x30, 0x0000}, {0x37, 0x9D1F},
+    {0x48, 0xB2FD}, {0x7E, 0xB03F}, {0x2B, 0x00E0}, {0x43, 0x0048}, {0x78, 0x6968}, {0x30, 0x0000}, {0x37, 0x9D1F},
     {0x30, 0x0000}, {0x30, 0xBFF1}, {0x13, 0x03DF}, {0x4A, 0x5430}, {0x28, 0x0A40}, {0x47, 0x6943},
     {0x3F, 0x0000}, {0xC7, 0x6943}, {0x47, 0x6943},
 };
@@ -115,14 +139,29 @@ static void set_demod(trx_demod_t demod)
     trx_spi_write(REG_AGC_THR, 0x2A32);
 }
 
-// The DMR bandwidth as the DM-36 stock firmware (0x0048), the others as the FD68xx chips share
+// The bandwidth words of the FD6818B (0x43): the DM-36 stock firmware's and the FD6818B's. The shared
+// fd68xx_set_bandwidth() writes the FD6818's words (0x4008 for 12.5 kHz, 0x3658 for SSB, 0x4048 for DMR): a
+// different chip's. The DMR word is the stock's 0x0048 (the same filter byte as the set-up B's 0x3048).
 static void set_bandwidth(trx_bandwidth_t bandwidth)
 {
-    if (bandwidth == TRX_BANDWIDTH_DMR) {
-        trx_spi_write(0x43, BANDWIDTH_DMR);
-    } else {
-        fd68xx_set_bandwidth(bandwidth);
-    }
+    static const uint16_t values[] = {
+        [TRX_BANDWIDTH_25] = BANDWIDTH_25,
+        [TRX_BANDWIDTH_12_5] = BANDWIDTH_12_5,
+        [TRX_BANDWIDTH_6_25] = BANDWIDTH_6_25,
+        [TRX_BANDWIDTH_DMR] = BANDWIDTH_DMR,
+    };
+
+    trx_spi_write(0x43, values[bandwidth]);
+}
+
+// The mic gain (0x7D): the FD6818B's encoding. The setting (0..31) as the FD6818's five steps (22/24/26/28/30)
+// are, so the stock's default (26) the middle one (38), as there (26).
+static void set_mic_gain(uint8_t gain)
+{
+    static const uint16_t steps[] = {31, 34, 38, 41, 44};
+    uint8_t index = (gain >= 30) ? 4 : (gain >= 28) ? 3 : (gain >= 26) ? 2 : (gain >= 24) ? 1 : 0;
+
+    trx_spi_write(0x7D, (uint16_t)(MIC_GAIN_BASE | steps[index]));
 }
 
 // The chip picks its band itself (as the FD6818B): the calibration byte in 0x40, no 0x1A
@@ -231,7 +270,7 @@ trx_driver_t trx_dm36 = {
     .tune = fd68xx_tune, // CONTROL_STEP only from idle (control_on()); tune doesn't go through idle
     .transmit_prepare = transmit_prepare,
     .tx_on = tx_on,
-    .set_mic_gain = fd68xx_set_mic_gain,
+    .set_mic_gain = set_mic_gain,
 
     .dmr_burst_tx = dmr_burst_tx,
     .dmr_burst_rx = dmr_burst_rx,
