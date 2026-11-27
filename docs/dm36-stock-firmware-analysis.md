@@ -96,8 +96,8 @@ OpenDMR 先前用的是 UV-K1/K5v3 的 BK4829 表，PLL/VCO 与原机不同：
 | 0x73 | 0x6681 | 未写 | AFC |
 | 0x7E | 0x303E | 0x302E | AGC 模式 |
 
-结论：PLL/VCO 写错⇒频率合成器不锁定⇒完全无法收发。**已经在 `fd6818.c` 用 `init_settings_dm36[]`
-修正并强制选用（不依赖读 ID）**；若实测仍有明显频偏/不锁定，首先核对本表。
+结论：PLL/VCO 写错⇒频率合成器不锁定⇒完全无法收发。**已经在 DM36 自己的驱动 `src/board/dm36/trx_dm36.c` 用原厂
+`init_settings[]` 修正并强制选用（不依赖读 ID）**；若实测仍有明显频偏/不锁定，首先核对本表。
 
 ### 2.2 模式切换表（仍待实机核对）
 
@@ -110,14 +110,14 @@ OpenDMR 先前用的是 UV-K1/K5v3 的 BK4829 表，PLL/VCO 与原机不同：
 | 音频模式切换 | `0x0300e282` | `0x2E=0x8608 ↔ 0x9608`, `0x2F=0x1890 ↔ 0x9890`（配合 `bsr 0x300e120` 的模式号 1/2/3/0） |
 | 静音/AF 输出 | `0x0300e93a` | `0x47=0x6943` 配 `0x7E=0x3006`；`0x47=0x6042` 配 `0x7E=0x302E` |
 
-注意：OpenDMR 的 `dmr_settings` 用 `0x43=0x4048 / 0x47=0x0140 / 0x7E=0x303F`，与原厂 DMR 表不同；
-DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳仍需实机听/解码验证**。
+注意：共享驱动的 `dmr_settings` 用 `0x43=0x4048 / 0x47=0x0140 / 0x7E=0x303F`，与原厂 DMR 表不同；
+DM36 分支已按原厂值建 `dmr_settings[]`（`src/board/dm36/trx_dm36.c`），但**这些值是否最佳仍需实机听/解码验证**。
 
 ### 2.3 已应用的修复（避免重复排查）
 
-- `src/board/dm36/fd6818_dm36.c`：DM36 专属 FD6818 驱动（独立文件），含原厂 init/post-init/FM/DMR 表；
-  `fd6818_init()` 在 DM36 下不读 ID、`BANDWIDTH_DMR=0x0048`；DM36 构建时由 Makefile 替换共享 `fd6818.c`。
-- `docs/dm36-porting.md` 第 10.7 节记录了差异表与编译结果。
+- `src/board/dm36/trx_dm36.c`：DM36 专属 FD6818B 驱动（上游 `trx_driver_t` 接口，独立文件），含原厂 init/post-init/FM/DMR 表；
+  DM36 构建下强制选用该驱动、不依赖读 ID、DMR 带宽 `0x0048`；DM36 构建时由 Makefile 替换共享的 `trx_fd6818.c` / `trx_fd6818b.c`。
+- `docs/dm36-porting.md` 第 10.7 节记录了差异表与编译结果，第 10.10 节记录了迁移到上游收发驱动层的过程。
 
 ---
 
@@ -172,7 +172,7 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
 - `src/board/dm36/uart2_dm36.c/.h`：`uart2_init/uart2_write/uart2_read`
 - `src/board/dm36/bluetooth.c/.h`：启动发 `AT+VER?`/`AT+AUTOCONN?`，解析 `CONN/DISC`，
   `bluetooth_audio()` 与 `bluetooth_write_data()` 接口
-- `bluetooth_start()` 在 DM36 独立的 `fd6818_dm36.c` 中调用，共享 `main.c` 与上游完全一致
+- `bluetooth_start()` 在 DM36 独立的 `trx_dm36.c` 中调用，共享 `main.c` 与上游完全一致
 
 **待人工/实机**：
 1. 音频：模块模拟音频脚与音频开关/功放的 GPIO 路由尚未接入；现只完成模块的 HFP/SPK/MIC 控制命令。
@@ -212,7 +212,7 @@ DM36 分支已按原厂值建 `dmr_settings_dm36[]`，但**这些值是否最佳
 | `docs/dm36-porting.md` | 移植流程与实测结果（10.3 校准、10.6 按键音、10.7 FD6818B、10.8 蓝牙） |
 | `docs/dm36-stock-fd6818-writes.md` | 原厂 231 条 FD6818 寄存器写入完整列表（VMA/reg/value） |
 | `docs/fd6818-registers.md` | BK4819/BK4829 寄存器含义参考 |
-| `src/board/dm36/fd6818_dm36.c` | 已应用的 DM36 专属寄存器表（独立驱动） |
+| `src/board/dm36/trx_dm36.c` | 已应用的 DM36 专属寄存器表（上游收发驱动层上的独立驱动） |
 | `src/board/dm36/bluetooth.c` | 已实现的 LytLink AT 命令框架 |
 | `src/board/dm36/uart2_dm36.c/.h` | DM36 专属 UART2 蓝牙链路驱动 |
 | `tools/debug/dm36_keyscan.py` | SK1/SK2/PTT 按键分层诊断（固件位 + 原始 GPIO） |

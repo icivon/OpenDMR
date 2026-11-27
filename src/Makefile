@@ -59,10 +59,11 @@ LIBS    := -lm -lc -lgcc
 SRCDIRS := startup freertos freertos/portable/CK803 hal drivers dmr graphics graphics/fonts graphics/themes ui ui/text ui/widgets services app
 C_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.c))
 ifeq ($(BOARD),dm36)
-# DM-36 sources live only in board/dm36/; the shared FD6818 driver is replaced
-# by its DM-36 counterpart so upstream fd6818.c merges stay conflict-free.
-C_SRCS  := $(filter-out services/gps.c drivers/fd6818.c,$(C_SRCS)) \
-           board/gps_stub.c board/dm36/fd6818_dm36.c board/dm36/uart2_dm36.c board/dm36/bluetooth.c
+# DM-36 sources live only in board/dm36/; the transceiver driver is the DM-36's own (its FD6818B values, on
+# the upstream transceiver driver layer), so the shared FD6818 drivers stay untouched and upstream merges
+# stay conflict-free.
+C_SRCS  := $(filter-out services/gps.c drivers/trx_fd6818.c drivers/trx_fd6818b.c,$(C_SRCS)) \
+           board/gps_stub.c board/dm36/trx_dm36.c board/dm36/uart2_dm36.c board/dm36/bluetooth.c
 endif
 S_SRCS  := $(foreach d,$(SRCDIRS),$(wildcard $(d)/*.S))
 OBJS    := $(addprefix $(BUILD)/,$(C_SRCS:.c=.o) $(S_SRCS:.S=.o))            $(patsubst $(VOCODER)/%.c,$(BUILD)/vocoder/%.o,$(wildcard $(VOCODER)/*.c)) \

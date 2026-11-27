@@ -41,7 +41,13 @@
 #define LOCK_CHECK_MS        80
 
 // The chip drivers, in the order they are tried; the first is also the one for an unknown chip
+#ifdef BOARD_TRX_DRIVER
+// A board with its own driver (the DM-36): it is the only one, and always the one (its chip's ID may not be
+// read: the stock firmware doesn't read it either)
+static trx_driver_t *const drivers[] = {BOARD_TRX_DRIVER};
+#else
 static trx_driver_t *const drivers[] = {&trx_fd6818, &trx_fd6818b};
+#endif
 
 static trx_driver_t *drv; // in RAM (trx_driver.h)
 static bool drv_known;    // the chip's ID was one of drivers[]

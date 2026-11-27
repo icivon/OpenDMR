@@ -36,11 +36,12 @@
 #include "hal.h"
 #include "trx_spi.h"
 
-#define PIN_SCL 0x07
-#define PIN_SDA 0x08
-#define PIN_SCN 0x18
-#define PIN_GP0 0x3B
-#define PIN_GP1 0x3A
+// The pins from the board map (the transceiver chip's soft SPI)
+#define PIN_SCL BOARD_PIN_FD6818_SCL
+#define PIN_SDA BOARD_PIN_FD6818_SDA
+#define PIN_SCN BOARD_PIN_FD6818_SCN
+#define PIN_GP0 BOARD_PIN_FD6818_GP0
+#define PIN_GP1 BOARD_PIN_FD6818_GP1
 
 void trx_spi_init(void)
 {

@@ -26,7 +26,6 @@ sys.path.insert(0, HERE)
 import dm32dbg  # noqa: E402
 
 ELF = os.environ.get("DM32_ELF", os.path.join(HERE, "..", "..", "src", "build", "opendmr_dm36.elf"))
-STATS = 0x00030A94  # dmr_soft_stats: halves, missed, busy_us_max, bursts, syncs, lost, relocks, ...
 
 
 def symbols(elf):
@@ -46,9 +45,13 @@ def main():
     args = ap.parse_args()
 
     sym = symbols(ELF)
-    read_addr = sym.get("fd6818_read")
+    read_addr = sym.get("trx_spi_read")
     if read_addr is None:
-        sys.exit("fd6818_read not found in %s (wrong ELF?)" % ELF)
+        sys.exit("trx_spi_read not found in %s (wrong ELF?)" % ELF)
+    # dmr_soft_stats: halves, missed, busy_us_max, bursts, syncs, lost, relocks, ...
+    stats_addr = sym.get("dmr_soft_stats")
+    if stats_addr is None:
+        sys.exit("dmr_soft_stats not found in %s (wrong ELF?)" % ELF)
 
     radio = dm32dbg.Radio(args.port)
     radio.p.reset_input_buffer()
@@ -59,7 +62,7 @@ def main():
             try:
                 reg50 = radio.call(read_addr, [0x50]) & 0xFFFF
                 reg43 = radio.call(read_addr, [0x43]) & 0xFFFF
-                raw = radio.mem_read(STATS, 32)
+                raw = radio.mem_read(stats_addr, 32)
                 halves, missed, busy, bursts, syncs, lost, relocks = struct.unpack_from("<7I", raw)
                 print("%s  0x50=%04X 0x43=%04X  halves=%d bursts=%d syncs=%d lost=%d"
                       % (time.strftime("%H:%M:%S"), reg50, reg43, halves, bursts, syncs, lost), flush=True)

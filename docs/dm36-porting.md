@@ -29,7 +29,7 @@
 
 **现象反推**：开机屏幕正常 ⇒ CPU、时钟、程序 Flash XIP、屏驱动、framebuffer 全部正常。故障被收敛到两个纯板级层：**GPIO 引脚/mux（按键）** 与 **射频前端（收发）**。
 
-**射频芯片区分**：DM36 使用 **FD6818B / BK4829（ID `0x4829`）**，DM32 使用 **FD6818 / BK4819（ID `0x4819`）**。DM36 有独立的原厂寄存器表驱动 `src/board/dm36/fd6818_dm36.c`（DM36 构建时由 Makefile 替换共享 `src/drivers/fd6818.c`），DM36 下强制使用该表、不依赖 ID 读取；DM36 射频采集时应以 `0x4829` 为期望 ID。
+**射频芯片区分**：DM36 使用 **FD6818B / BK4829（ID `0x4829`）**，DM32 使用 **FD6818 / BK4819（ID `0x4819`）**。DM36 有独立的原厂寄存器表驱动 `src/board/dm36/trx_dm36.c`（DM36 构建时由 Makefile 替换共享的 `src/drivers/trx_fd6818.c` / `trx_fd6818b.c`），DM36 下强制使用该表、不依赖 ID 读取；DM36 射频采集时应以 `0x4829` 为期望 ID。
 
 ---
 
@@ -102,15 +102,16 @@ FD6818 的 4FSK 偏置、RX 调整、PA 功率 DAC 来自数据 Flash 中的原�
 FD6818 走 GPIO 软件 bit-bang（硬件 SPI0 专用于 25Q128）：
 
 ```c
-// src/drivers/fd6818.c:45-49
-#define PIN_SCL 0x07
-#define PIN_SDA 0x08
-#define PIN_SCN 0x18
-#define PIN_GP0 0x3B
-#define PIN_GP1 0x3A
+// src/board/board_dm32.h:71-76 (引脚来源，DM36 目前继承 DM32 的取值)
+// src/drivers/trx_spi.c:39-43
+#define PIN_SCL BOARD_PIN_FD6818_SCL // 0x07
+#define PIN_SDA BOARD_PIN_FD6818_SDA // 0x08
+#define PIN_SCN BOARD_PIN_FD6818_SCN // 0x18
+#define PIN_GP0 BOARD_PIN_FD6818_GP0 // 0x3B
+#define PIN_GP1 BOARD_PIN_FD6818_GP1 // 0x3A
 ```
 
-写 `delay(5)` / 读 `delay(10)`（`fd6818.c:191-229`）。PA/LNA/音频开关：
+写 `delay(5)` / 读 `delay(10)`（`src/drivers/trx_spi.c:58-92`）。PA/LNA/音频开关：
 
 ```c
 // src/services/radio_internal.h:49-54
@@ -123,9 +124,9 @@ FD6818 走 GPIO 软件 bit-bang（硬件 SPI0 专用于 25Q128）：
 
 **3) FD6818B 寄存器差异**
 
-DM36 是 FD6818B / BK4829（`0x4829`），DM32 是 FD6818 / BK4819（`0x4819`）；DM36 构建使用独立驱动 `src/board/dm36/fd6818_dm36.c`，`fd6818_init()` 强制选用原厂表、不依赖 ID 读取（DM32 仍沿用共享 `fd6818.c` 的 ID 自动选择）。DM36 采集时 `fdr 0x00` 应返回 `0x4829`；如果读到 `0x4819`、全 0 或全 `0xFF`，先查软 SPI 引脚/mux。
+DM36 是 FD6818B / BK4829（`0x4829`），DM32 是 FD6818 / BK4819（`0x4819`）；DM36 构建使用独立驱动 `src/board/dm36/trx_dm36.c`（上游收发驱动层上的 DM-36 驱动，见 10.10），它强制使用原厂表、不依赖 ID 读取（DM32 仍沿用共享 `src/drivers/trx_fd6818.c` / `trx_fd6818b.c` 的 ID 自动选择）。DM36 采集时 `fdr 0x00` 应返回 `0x4829`；如果读到 `0x4819`、全 0 或全 `0xFF`，先查软 SPI 引脚/mux。
 
-`docs/fd6818-registers.md:32-36` 已有跨机型差异证据：另一台机 `0x47` 高位为 `0x7840/0x7040`，本机为 `0x6042/0x6142`。DMR 关键位：`0x50=0xBB20`（bit15 把原始基带送 HR_C7000，否则无 DMR 同步）、`0x43=0x4048`（DMR 带宽），见 `src/drivers/fd6818.c:188-192`。
+`docs/fd6818-registers.md:32-36` 已有跨机型差异证据：另一台机 `0x47` 高位为 `0x7840/0x7040`，本机为 `0x6042/0x6142`。DMR 关键位：`0x50=0xBB20`（bit15 把原始基带送 HR_C7000，否则无 DMR 同步）、`0x43=0x4048`（DM32 的 DMR 带宽；DM36 是 `0x0048`），见 `src/drivers/trx_fd6818.c:70-79` 与 `src/board/dm36/trx_dm36.c` 的 `dmr_settings[]`。
 
 **4) HR_C7000 侧**
 
@@ -340,7 +341,7 @@ flowchart TD
 
 ### 9.3 已改造的共享文件（仅宏替换）
 
-`hw.h`（引脚）、`gpio.c`（mux/DDR/DR 初值，GPS 电源脚按机型裁剪）、`keys.c`（列/PTT/矩阵）、`rotary.c`、`leds.c`、`fd6818.c`（软 SPI）、`radio_internal.h`（PA/LNA/频段）、`gps.c`、`rda5807.c`、`battery.c`、`firmware_info.c`、`cable_link.c`、`Makefile`。
+`hw.h`（引脚）、`gpio.c`（mux/DDR/DR 初值，GPS 电源脚按机型裁剪）、`keys.c`（列/PTT/矩阵）、`rotary.c`、`leds.c`、`trx_spi.c`（软 SPI，引脚改走板级宏）、`radio_internal.h`（PA/LNA/频段）、`gps.c`、`rda5807.c`、`battery.c`、`firmware_info.c`、`cable_link.c`、`Makefile`。
 
 ### 9.4 构建方式
 
@@ -653,9 +654,9 @@ src/build/opendmr_dm36.bin
 
 DMR 模式表（`0x0300f26e`）同样不同：原厂写 `0x43=0x0048`（OpenDMR 为 `0x4048`）、`0x47=0x6740/0x6943`（OpenDMR 为 `0x0140`）、`0x7E=0xB03F`（OpenDMR 为 `0x303F`）。
 
-**结论**：DM36 无法收发的根本原因是 **OpenDMR 的 FD6818B 表不是 DM36 的值**。PLL/VCO 寄存器（`0x1C/0x1D/0x1F/0x25`）错误会使频率合成器无法锁定，表现为完全收不到也发不出。此外 `fd6818_init()` 依赖读寄存器 `0x00` 判断芯片型号，而原厂固件复位后直接写表、从不读 ID——ID 识别若失败会进一步选错成 FD6818（DM32）表。
+**结论**：DM36 无法收发的根本原因是 **OpenDMR 的 FD6818B 表不是 DM36 的值**。PLL/VCO 寄存器（`0x1C/0x1D/0x1F/0x25`）错误会使频率合成器无法锁定，表现为完全收不到也发不出。此外旧 `fd6818_init()` 依赖读寄存器 `0x00` 判断芯片型号，而原厂固件复位后直接写表、从不读 ID——ID 识别若失败会进一步选错成 FD6818（DM32）表。
 
-**修复**（全部在独立文件 `src/board/dm36/fd6818_dm36.c`，DM36 构建时替换共享 `fd6818.c`，共享 `drivers/fd6818.c` 与上游完全一致）：
+**修复**（最初在独立文件 `src/board/dm36/fd6818_dm36.c`，DM36 构建时替换共享 `fd6818.c`；上游重构收发驱动层后已迁移到 `src/board/dm36/trx_dm36.c`，见 10.10）：
 
 | 项 | 改动 |
 |---|---|
@@ -702,7 +703,7 @@ text 731512 / data 3444 / bss 323640
 **实现**（全部集中在 `src/board/dm36/`，DM36 构建才编译，DM32 不收集；共享源与上游完全一致）：
 - `src/board/dm36/uart2_dm36.c/.h`：DM36 专属 UART2 驱动（`uart2_init/uart2_write/uart2_read`，115200 8N1，轮询收发，无中断）。
 - `src/board/dm36/bluetooth.c/.h`：蓝牙服务，启动时发 `AT+VER?` / `AT+AUTOCONN?`，解析 `CONN`/`DISC` 维护链路状态；提供 `bluetooth_audio()`（AGHF/SPKEN/MICEN/AUDIO）与 `bluetooth_write_data()`（AT+DATA 透传）。
-- `bluetooth_start()` 在 `src/board/dm36/fd6818_dm36.c` 的 `fd6818_init()` 中调用，共享 `main.c` 不改动。
+- `bluetooth_start()` 在 `src/board/dm36/trx_dm36.c` 的 `init()` 中调用，共享 `main.c` 不改动。
 
 **编译验证**：DM32 与 DM36 均 `EXIT=0`、无警告；DM36 固件已重新生成。
 
@@ -925,3 +926,35 @@ NM = os.environ.get('CSKY_NM', 'csky-elf-noneabiv2-nm')
 | 不能静态解决项 | 完整 mux/DDR、软 SPI 脚、PA/LNA/音频 GPIO、电池系数、旋钮/背光、蓝牙电源脚、CPS 机型码；均不猜改，保留实机确认 |
 
 代码层已通过 DM36 完整编译；DM32 构建保持默认钩子为空，行为不变。
+
+### 10.10 迁移到上游收发驱动层（2026-11-27）
+
+上游（`origin/develop`）把收发从 `src/drivers/fd6818.{c,h}` 重构成了分层结构：`trx.c` 负责流程（开机、锁定检查、收/发），每个芯片一个 `trx_driver_t`（`trx_fd6818.c` = FD6818，`trx_fd6818b.c` = FD6818B），共用的寄存器与函数在 `trx_fd68xx.c`，软 SPI 在 `trx_spi.c`。旧的 `fd6818.h` 已删除，DM36 原先的 `src/board/dm36/fd6818_dm36.c`（旧 API）因此无法编译：
+
+```text
+board/dm36/fd6818_dm36.c:43:20: fatal error: fd6818.h: No such file or directory
+```
+
+**做法**：DM36 的驱动改写到上游的 `trx_driver_t` 接口上（`src/board/dm36/trx_dm36.c`），原厂寄存器表逐值保留，流程按 FD6818B 的写法（上游 `trx_fd6818b.c`）。
+
+| 项 | 内容 |
+|---|---|
+| `src/board/dm36/trx_dm36.c` | 新增：DM36 的 `trx_driver_t`（`trx_dm36`，ID `0x4829`）。原厂 init / post-init / FM / DMR 四张表逐值保留；DMR 带宽 `0x0048`（DM32 是 `0x4048`）；`0x2A=0x6600`、AGC `0x14=0x0210` / `0x49=0x2A32`；DMR 的 AF 输出 `0x47=0x6943`。共用部分直接用上游 `trx_fd68xx.c`（`fd68xx_*`），收发切换用上游 FD6818B 的 `0x0200` 步进、`0x40=0x34F0` 自选频段（FD6818 的 `0x1A` 分频表不适用于 FD6818B）、DMR 突发不每次进 idle。 |
+| DMR 表的一处修正 | 旧表里的 `0x50=0xBB20` 未保留：在 FD6818B 上 `0x50` 的 bit15 是"模拟发射"（原厂固件发射时写 `0xBB20`、平时写 `0x3B20`，上游 `trx_fd6818b.c` 的 `tx_on()` 同），不是 FD6818 的"原始基带"；原厂的 DMR 模式表也不写 `0x50`。数字模式的原始音频由 `0x47=0x6943` 送出。 |
+| `src/board/dm36/fd6818_dm36.c` | 删除（旧 API，寄存器表已迁入新文件） |
+| `src/board/board_dm36.h` | 新增 `BOARD_TRX_DRIVER (&trx_dm36)`：上游 `trx.c` 用它替换默认的驱动列表，DM36 始终用自己的表，不依赖 ID 读取；`BOARD_BEEP_PATH_AF_OUT` 改用上游接口 `trx_af_out()` |
+| `src/drivers/trx.c` | 共享文件只加一个钩子：`#ifdef BOARD_TRX_DRIVER` 时驱动列表只有板级那一个 |
+| `src/drivers/trx_spi.c` | 软 SPI 的 5 个引脚改用板级宏 `BOARD_PIN_FD6818_*`（取值与原来一致，DM32 行为不变；DM36 之后若测得引脚不同，只改 `board_dm36.h`） |
+| `src/Makefile` | DM36 的源文件表：`board/dm36/fd6818_dm36.c` → `board/dm36/trx_dm36.c`，并排除共享的 `drivers/trx_fd6818.c` / `trx_fd6818b.c` |
+| `tools/debug/dm36_rfwatch.py` | 读的符号 `fd6818_read` → `trx_spi_read`；`dmr_soft_stats` 的地址改为从 ELF 符号表取（原来写死的地址已失效） |
+
+**编译验证**（本机无 `make`，用同样的编译/链接参数直接调用 `csky-abiv2-elf-gcc`）：
+
+```text
+DM32:  text 738548 / data 4252 / bss 326140   BUILD OK（与改动前逐值一致）
+DM36:  text 736168 / data 4116 / bss 325900   BUILD OK
+```
+
+DM36 的 ELF 里 `trx_dm36` 在、`trx_fd6818` / `trx_fd6818b` 已被 `--gc-sections` 去掉；`trx_init()` 反汇编可见它取的是 `&trx_dm36`（`0x10f8c`）。DM32 的 ELF 仍取共享的两个驱动，大小与改动前完全一致。
+
+**注意**：上游新增了开机时的合成器锁定检查（`trx_locked()`，不锁定就完全不发射）。DM36 的驱动用原厂表 + FD6818B 的流程，理论上会锁定，但**尚未实机验证**：刷机后先看屏幕上的机型页（`trx_chip_name()` / `trx_locked()`），若显示 `no lock` 说明原厂表与该流程还不匹配，需要按 `fda` 的寄存器 dump 对照原厂序列调整 `trx_dm36.c` 的表与流程。

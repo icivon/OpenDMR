@@ -22,6 +22,7 @@
 #include "board_dm32.h"
 #include "dm36/bluetooth.h"
 #include "keys.h"
+#include "trx_driver.h"
 
 /* ---------------- keypad wiring (measured on real hardware, 2026-11-25) ----------------
  * The DM-36 matrix is wired differently: the physical keys sit at other row/column
@@ -94,10 +95,18 @@ static inline int dm36_key_index(int index)
 #undef  BOARD_HAS_GPS
 #define BOARD_HAS_GPS         0
 
+/* ---------------- the transceiver chip ----------------
+ * The DM-36's RF is an FD6818B (BK4829) with its own register values (the DM-36 stock firmware's, see
+ * docs/dm36-stock-fd6818-writes.md). Its driver is board/dm36/trx_dm36.c, on the upstream transceiver driver
+ * layer (drivers/trx_driver.h): upstream's driver list (drivers/trx.c) is replaced by it, so the DM-36 always
+ * uses its own values, whatever the chip's ID reads (the stock firmware never reads the ID either). */
+extern trx_driver_t trx_dm36;
+#define BOARD_TRX_DRIVER (&trx_dm36)
+
 /* DM-36 audio quirks: the FD6818B AF output shares the speaker node with the
  * baseband beep path; mute it while a prompt plays. Its amplifier also starts
  * slower than the DM-32's. */
-#define BOARD_BEEP_PATH_AF_OUT(on, carrier) fd6818_af_out(!(on) && (carrier))
+#define BOARD_BEEP_PATH_AF_OUT(on, carrier) trx_af_out(!(on) && (carrier))
 #define BOARD_AMP_START_MS      120
 
 /* CPS replies are mirrored to the LytLink UART2 link once it is up. */
