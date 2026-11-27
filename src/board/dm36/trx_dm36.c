@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+ * DM36 adaptation by BG2LNY
  * Redistribution and use: see LICENSE (BSD-style, non-commercial without written permission).
  *
  * OpenDMR, driver: the DM-36's FD6818B transceiver (BK4829, ID 0x4829) on the upstream transceiver driver

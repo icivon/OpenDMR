@@ -53,6 +53,9 @@
 #include "key_settings.h"
 #include "menus.h"
 #include "lockouts.h"
+#if defined(BOARD_DM36)
+#include "dm36/bluetooth_menu.h"
+#endif
 
 #define TIMEZONE_UTC      64   // timezone: lower 7 bits, quarters of an hour from UTC - 64
 #define TIMEZONE_LOCAL    0x80 // timezone: show the local time
@@ -347,6 +350,9 @@ static const ui_item_t main_menu_items[] = {
     {TEXT_SATELLITE, ICONS_SATELLITE, UI_ITEM_SCREEN, &satellite_screen, NULL},
     {TEXT_GPS, ICONS_LOCATION, UI_ITEM_SCREEN, &gps_screen, NULL},
     {TEXT_SCAN_LOCKOUTS, ICONS_SCAN, UI_ITEM_SCREEN, &pick_list_screen, (void *)&lockouts_list},
+#if defined(BOARD_DM36)
+    {BT_TEXT_MENU, ICONS_COUNT, UI_ITEM_SCREEN, &bluetooth_menu_screen, NULL},
+#endif
 };
 
 const ui_list_t main_menu = {

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+ * DM36 adaptation by BG2LNY
  * Redistribution and use: see LICENSE (BSD-style, non-commercial without written permission).
  *
  * No-GPS board stub (DM-36). The Makefile compiles this instead of

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+ * DM36 adaptation by BG2LNY
  * Redistribution and use: see LICENSE (BSD-style, non-commercial without written permission).
  *
  * DM-36 board map. Same screen (240x320 ST7789 / I8080), same HR_C7000 SoC
@@ -122,10 +123,11 @@ extern trx_driver_t trx_dm36;
     do { if (is_analog()) { trx_af_out(!(on) && (carrier)); } } while (0)
 #define BOARD_AMP_START_MS      120
 
-/* CPS replies are mirrored to the LytLink UART2 link once it is up. */
+/* A CPS request that came from the LytLink UART2 link is remembered in bluetooth.c; only that reply is
+ * mirrored back, on the same DATA/ADATA channel as the request. Wired CPS replies stay on UART0. */
 #undef  BOARD_CPS_REPLY_OUT
 #define BOARD_CPS_REPLY_OUT(data, length) \
-    do { if (bluetooth_connected()) bluetooth_write_data((data), (length)); } while (0)
+    do { bluetooth_cps_reply((data), (length)); } while (0)
 
 /*
  * TODO(DM36) - measured values go here. Each group was identified by static

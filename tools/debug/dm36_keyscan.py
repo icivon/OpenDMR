@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+# DM36 adaptation by BG2LNY
 """Diagnose why the DM-36 side buttons SK1 / SK2 do nothing.
 
 Commit 297b1d5 measured only the matrix keys (menu, back, *, 0, up, down).

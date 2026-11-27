@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+# DM36 adaptation by BG2LNY
 """Live RX check for the DM-36: FD6818 baseband routing + DMR soft-demod stats.
 
 Run this in one terminal, then switch the radio to a DMR channel and listen to

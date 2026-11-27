@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+# DM36 adaptation by BG2LNY
 """Live key monitor for the DM-36: prints each key press as it happens.
 
 This calls keys_read_keypad() / keys_read_buttons() on the radio over the cable

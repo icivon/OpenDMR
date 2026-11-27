@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM -->
+<!-- DM36 adaptation by BG2LNY -->
+
 |---|---|---|---|
 | 0x0300DD7C | 0x51 | 0x00A0 |  |
 | 0x0300DD9A | 0x51 | 0x0000 |  |

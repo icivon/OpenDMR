@@ -35,11 +35,19 @@
 
 #include "language.h"
 #include "text.h"
+#if defined(BOARD_DM36)
+#include "dm36/bluetooth_menu.h"
+#endif
 
 const char *text(text_id_t id)
 {
     const char *s;
 
+#if defined(BOARD_DM36)
+    if ((uint16_t)id >= TEXT_COUNT) {
+        return bluetooth_menu_text(id);
+    }
+#endif
     if (id >= TEXT_COUNT) {
         return "?";
     }

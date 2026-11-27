@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM -->
+<!-- DM36 adaptation by BG2LNY -->
+
 # DM36 原厂固件分析结果（供后续人工修复 Bug 参考）
 
 > 来源：`C:\Users\Administrator\Desktop\36\dm36-program-20261125-1933.bin`（1 MB 程序 Flash）
@@ -176,7 +179,7 @@ DM36 分支已按原厂值建 `dmr_settings[]`（`src/board/dm36/trx_dm36.c`）�
 
 **待人工/实机**：
 1. 音频：模块模拟音频脚与音频开关/功放的 GPIO 路由尚未接入；现只完成模块的 HFP/SPK/MIC 控制命令。
-2. 写频：`+DATA:` 帧尚未接到 `cable_link` 的 CPS 通道；现只有 UART2 透传接口。
+2. 写频：`+DATA:` / `+ADATA:` 帧已接到 `cable_link` 的 CPS 通道，CPS 回复按请求来源与通道回送；待实机验证。
 3. 抓 UART2（115200）看 `AT+VER?`→`VER:` 响应，获取模块固件版本/型号。
 
 ---
@@ -326,7 +329,9 @@ VMA 0x30b1068: 00 30 6e 00 ff ff ff 00
 - `AT+MICGAIN=15` / `AT+SPKGAIN=25` 纳入初始化。
 - `+DATA:00,<n>` / `+ADATA:01,<n>` 改为"头部 + 长度 + 二进制载荷"状态机，避免载荷中的 `\r` / `\n` 被当作行结束。
 - 收到的 CPS 请求通过 `cable_link_inject()` 进入原有 CPS 请求缓冲，由 `cable_link_task()` 统一处理。
-- CPS 回复通过 `BOARD_CPS_REPLY_OUT` 镜像到 UART2；DM32 默认钩子为空，构建行为不变。
+- 蓝牙请求打上 2 秒有效标记，`BOARD_CPS_REPLY_OUT` 只把对应回复镜像到 UART2；有线 CPS 回复不再串到蓝牙，DM32 默认钩子为空，构建行为不变。
+- CPS 客户端的 `D S <divisor>` 提速协商在蓝牙通道上按“老固件”回 `D S 0`：LytLink 的 UART2 固定 115200，提速命令只会改 UART0。
+- `READY` 重新下发初始化命令；关闭蓝牙时用 `CONN` 解析出的远端地址发 `AT+DISC=<addr>`。PTT 由机器自身控制，不接入耳机 `PTTKEY`。
 
 代码位置：`src/board/dm36/bluetooth.c/.h`、`src/services/cable_link.c/.h`、`src/board/board.h`、`src/board/board_dm36.h`。
 

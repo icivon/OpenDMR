@@ -1,4 +1,7 @@
 /*
+ * Copyright (C) 2026 Junqiang Shi, VA3BPF / BG8AM
+ * DM36 adaptation by BG2LNY
+ *
  * OpenDMR, DM-36 only: UART2 (0x14090000), the LytLink Bluetooth module at
  * 115200 8N1. The stock firmware polls the TX FIFO and the receive happens in
  * the Bluetooth task (no UART2 interrupt); the block is the same 16550-like
