@@ -71,6 +71,8 @@
 #define SQUELCH_HOLD_SSB_MS 500
 #define SIGNAL_SAMPLES     10
 #define SIGNAL_MOVE        2 // the shown signal follows the average when it moved this much
+#define SIGNAL_POST_MS     200 // the UI hears of a new reading at most this often (the average's steps, not one jump)
+#define SIGNAL_STALE_MS    1000 // no reading for this long: the meter goes to zero (the receiver off, the engine away)
 #define RX_END_BEEP_MS     150 // the carrier end beep waits this long, a new carrier in it cancels both
 #define BEEP_RX_CARRIER    0x04 // settings.beep_options
 
@@ -242,6 +244,9 @@ static void RAM_CODE audio_amp(bool on)
 // The reading the UI was last told about (post_signal()): a change has to reach the screen even when the next one
 // arrives while the post throttle's window is still busy (2026-11-28)
 static int posted_signal_dbm = 0x7FFFFFFF;
+// When the meter last read the receiver: with the power saving's receiver off, or the engine away, nothing updates the
+// average and the screen kept the level of the last call (2026-11-28)
+static TickType_t last_sample_at;
 #endif
 
 void RAM_CODE post_signal(void)
@@ -249,9 +254,16 @@ void RAM_CODE post_signal(void)
     ui_event_t ev = {.type = UI_EVENT_DATA, .what = UI_DATA_SIGNAL};
 
 #if BOARD_VOLUME_POT
-    posted_signal_dbm = radio_signal_dbm();
-#endif
+    int dbm = radio_signal_dbm();
+
+    // Only a post the UI took counts as told: a dropped one (the queue full) left the reading marked as posted, so
+    // nothing compared it again and the meter stayed at the old level for good (2026-11-28)
+    if (ui_post(&ev)) {
+        posted_signal_dbm = dbm;
+    }
+#else
     ui_post(&ev);
+#endif
 }
 
 void squelch_close(void)
@@ -504,6 +516,10 @@ static void RAM_CODE add_sample(uint8_t signal)
 {
     uint32_t sum = 0;
 
+#if BOARD_VOLUME_POT
+    last_sample_at = xTaskGetTickCount();
+#endif
+
     samples[sample_index] = signal;
     sample_index = (uint8_t)((sample_index + 1) % SIGNAL_SAMPLES);
     for (int i = 0; i < SIGNAL_SAMPLES; i++) {
@@ -536,13 +552,15 @@ static void RAM_CODE add_sample(uint8_t signal)
     }
 
 #if BOARD_VOLUME_POT
-    // Every change of the displayed reading, throttled to one event in 400 ms. Comparing this sample with the previous
-    // one (and only while the reading was still moving) lost a change that landed inside the throttle's window: after a
-    // transmission ended the meter held the level of the last call, fully lit, until something else posted (2026-11-28)
+    // Every change of the displayed reading, throttled to one event in SIGNAL_POST_MS. Comparing this sample with the
+    // previous one (and only while the reading was still moving) lost a change that landed inside the throttle's
+    // window: after a transmission ended the meter held the level of the last call, fully lit, until something else
+    // posted (2026-11-28). 200 ms, not 400: the average climbs over its ten samples (250 ms) and the meter has to show
+    // the steps as they come, not jump to the level the call reached
     if (radio_signal_dbm() != posted_signal_dbm) {
         TickType_t now = xTaskGetTickCount();
 
-        if ((now - last_signal_post) >= pdMS_TO_TICKS(400)) {
+        if ((now - last_signal_post) >= pdMS_TO_TICKS(SIGNAL_POST_MS)) {
             last_signal_post = now;
             post_signal();
         }
@@ -973,12 +991,19 @@ int radio_signal_dbm(void)
 {
 #if BOARD_VOLUME_POT
     // The meter shows the signal, not the receiver's audio state (2026-11-28): a carrier the squelch has not opened on
-    // reads at its level too, and the reading no longer freezes when the audio closes - the meter used to hold the level
-    // of the moment the squelch last opened, which left it looking busy after a transmission ended. The standby noise
-    // (some -140 dBm on the DM-36) is under the lowest segment and shows nothing. On a 3 dB grid, so a reading moving
-    // by a decibel or two no longer flips a bar back and forth.
+    // reads at its level too. What it must not do is hold a level with nothing on the air - the DM-32 reads -140 dBm
+    // whenever the receiver is closed, and that is why its meter drops to zero the moment a call ends. No carrier (and
+    // no reading for a while: the power saving's receiver off, the engine away) therefore reads zero here as well, or
+    // the screen stayed fully lit after the transmission (2026-11-28). On a 3 dB grid, so a reading moving by a decibel
+    // or two no longer flips a bar back and forth.
     const int offset = (rs.channel.rx_freq >= UHF_FROM) ? 185 : 195;
     const int lowest = -121 - 6; // S0: under it there is no reading at all
+    bool heard = rs.has_carrier || (digital_carrier && !is_analog());
+
+    if (!heard || ((xTaskGetTickCount() - last_sample_at) > pdMS_TO_TICKS(SIGNAL_STALE_MS))) {
+        return -140;
+    }
+
     int dbm = (((int)signal_shown - offset) / 3) * 3;
 
     return (dbm < lowest) ? -140 : dbm;
