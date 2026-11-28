@@ -73,6 +73,8 @@
 #define SIGNAL_MOVE        2 // the shown signal follows the average when it moved this much
 #define SIGNAL_POST_MS     200 // the UI hears of a new reading at most this often (the average's steps, not one jump)
 #define SIGNAL_STALE_MS    1000 // no reading for this long: the meter goes to zero (the receiver off, the engine away)
+#define SIGNAL_RAW_NOISE   54 // the DM-36's standby RSSI reading (0x67, 0..255), from the side-by-side test
+#define SIGNAL_DBM_NOISE   (-125) // what it stands for: S0's edge, under it the meter shows nothing
 #define RX_END_BEEP_MS     150 // the carrier end beep waits this long, a new carrier in it cancels both
 #define BEEP_RX_CARRIER    0x04 // settings.beep_options
 
@@ -996,7 +998,14 @@ int radio_signal_dbm(void)
     // no reading for a while: the power saving's receiver off, the engine away) therefore reads zero here as well, or
     // the screen stayed fully lit after the transmission (2026-11-28). On a 3 dB grid, so a reading moving by a decibel
     // or two no longer flips a bar back and forth.
-    const int offset = (rs.channel.rx_freq >= UHF_FROM) ? 185 : 195;
+    // The DM-32's RSSI register and the DM-36's (0x67) do not read alike at all. S9+60 on the DM-32 is its full
+    // scale: raw 255, and 255 - 195 = 60 dBm over an S9, so it saturates there and shows nothing stronger. On the
+    // same signal the DM-36 read 74, with the standby noise at 54 (2026-11-28, read over the debug link during the
+    // user's test). No constant offset lines those two up, so the meter is the straight line through the two
+    // readings: the standby noise at S0's edge, raw 74 at S9+60. A band trim no longer applies.
+    // The DM-32 saturates, so it cannot pin the middle of the scale down - this line is calibrated on the strong end
+    // only. Below S9 it is still an extrapolation (2026-11-28).
+    const int raw = (int)signal_shown;
     const int lowest = -121 - 6; // S0: under it there is no reading at all
     bool heard = rs.has_carrier || (digital_carrier && !is_analog());
 
@@ -1004,7 +1013,7 @@ int radio_signal_dbm(void)
         return -140;
     }
 
-    int dbm = (((int)signal_shown - offset) / 3) * 3;
+    int dbm = SIGNAL_DBM_NOISE + ((raw - SIGNAL_RAW_NOISE) * 28) / 5;
 
     return (dbm < lowest) ? -140 : dbm;
 #else
