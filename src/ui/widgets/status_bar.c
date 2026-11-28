@@ -109,10 +109,10 @@ void status_bar_draw(const status_bar_data_t *data)
         right -= ICONS_WIDTH + 4;
     }
 
-    // the keypad locked: a padlock, amber on the band (#193: nothing showed it was); on the green / red the bar's colour
+    // the keypad locked: a padlock in the band's text colour, as the GPS pin and the time (#193: nothing showed it was;
+    // the warning colour was too dark on the band)
     if (locked) {
-        icons_draw(right - 16, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_LOCK,
-                   ((transmitting || receiving) ? text : THEME_COLOUR_WARNING));
+        icons_draw(right - 16, (WIDGET_STATUS_BAR_HEIGHT - ICONS_SIZE) / 2, ICONS_LOCK, text);
         right -= 16 + 4;
     }
 

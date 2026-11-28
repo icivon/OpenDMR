@@ -42,4 +42,7 @@ extern const ui_screen_t number_entry_screen; // arg: one of these
 #define NUMBER_ENTRY_NXDN_ID   ((void *)4) // the own NXDN ID only (1 - 65535; 0: not set, the DMR ID's)
 #define NUMBER_ENTRY_APRS_GATEWAY ((void *)5) // the APRS-over-DMR gateway (24 bit DMR ID only)
 
+// YSF: the DG-ID (0 - 99) of the home screen's channel or VFO, # there. Shown with the current one; set() takes the new
+void number_entry_open_dgid(uint8_t current, void (*set)(uint8_t dgid));
+
 #endif

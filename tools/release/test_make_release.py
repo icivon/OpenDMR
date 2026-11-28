@@ -1,6 +1,8 @@
 import contextlib
 import io
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -59,6 +61,57 @@ class ReleasePackTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, 'checksum read failed'):
                 self.pack()
         self.assertEqual(self.snapshot(), previous)
+
+
+class FirmwareBuildTests(unittest.TestCase):
+    """build() must not relink the objects of an instrumented build: src/Makefile gates
+    -DRX_CAPTURE, -DOPENDMR_DEBUG and -DOPENDMR_DELAY_LOG on make variables, its -MMD
+    dependencies do not follow CFLAGS, and make reads those variables from the environment
+    this function passes through."""
+
+    def setUp(self):
+        contexts = contextlib.ExitStack()
+        self.addCleanup(contexts.close)
+        self.calls = []
+
+        def run(command, **kwargs):
+            self.calls.append((list(command), kwargs.get('cwd'), kwargs))
+            return subprocess.CompletedProcess(command, 0, 'the build said something\n', '')
+
+        contexts.enter_context(mock.patch.object(make_release.subprocess, 'run', side_effect=run))
+        contexts.enter_context(mock.patch.object(make_release.shutil, 'which',
+                                                 side_effect=lambda name, path=None: '/usr/bin/' + name))
+        contexts.enter_context(mock.patch.object(make_release, 'git', return_value=''))
+        contexts.enter_context(mock.patch.dict(os.environ, {'RX_CAPTURE': '1', 'DEBUG': '1', 'DELAY_LOG': '1'}))
+        contexts.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+    def makes(self):
+        src = os.path.join(make_release.ROOT, 'src')
+        return [command for command, cwd, _ in self.calls if cwd == src]
+
+    def test_the_firmware_is_built_from_clean(self):
+        make_release.build()
+        commands = self.makes()
+        self.assertTrue(commands, 'build() ran no make in src/')
+        self.assertIn('clean', commands[0], 'the first make in src/ must be the clean')
+
+    def test_a_failed_clean_stops_the_release(self):
+        def run(command, **kwargs):
+            self.calls.append((list(command), kwargs.get('cwd'), kwargs))
+            return subprocess.CompletedProcess(command, 1, 'cannot remove build\n', '')
+
+        with mock.patch.object(make_release.subprocess, 'run', side_effect=run):
+            with self.assertRaises(SystemExit):
+                make_release.build()
+        self.assertEqual(len(self.makes()), 1, 'the firmware was built although the clean failed')
+
+    def test_the_instrumentation_variables_are_named_on_the_make_command_line(self):
+        make_release.build()
+        firmware = [command for command in self.makes() if 'clean' not in command]
+        self.assertTrue(firmware, 'build() ran no firmware make in src/')
+        # Command-line assignments override the environment, which an exported RX_CAPTURE=1
+        # (set in setUp) otherwise instruments even a clean build
+        self.assertLessEqual({'RX_CAPTURE=', 'DEBUG=', 'DELAY_LOG=', 'DEBUG_KEEP='}, set(firmware[-1]))
 
 
 if __name__ == '__main__':

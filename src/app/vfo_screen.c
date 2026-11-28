@@ -659,11 +659,22 @@ static void reply_to_call(void)
     ui_key_beep(SOUND_ACK);
 }
 
+// YSF, # (number_entry_open_dgid()): the VFO's DG-ID, kept as its other changes
+static void set_dgid(uint8_t dgid)
+{
+    codeplug_set_ysf_dgid(vfo(), dgid);
+    changed();
+}
+
 static bool do_action(keymap_action_t action)
 {
     switch (action) {
         case KEYMAP_NUMBER_ENTRY:
-            ui_push(&number_entry_screen, (!v_is_fm()) ? NUMBER_ENTRY_TX_TARGET : NUMBER_ENTRY_DTMF);
+            if (vfo()->mode == CODEPLUG_MODE_YSF) {
+                number_entry_open_dgid(codeplug_ysf_dgid(vfo()), set_dgid); // YSF has no TG: its DG-ID
+            } else {
+                ui_push(&number_entry_screen, (!v_is_fm()) ? NUMBER_ENTRY_TX_TARGET : NUMBER_ENTRY_DTMF);
+            }
             return false;
         case KEYMAP_CONTACT_LIST:
             contacts_open_quick_list(v_is_fm());
@@ -837,6 +848,9 @@ static bool handle_event(const ui_event_t *ev)
             if ((ev->what & UI_DATA_AUTOLOCK) && !lock_screen_is_keypad_locked()) {
                 lock_screen_lock(true, true); // the auto lock (keypad and PTT, as the main firmware)
                 return false;
+            }
+            if ((ev->what & UI_DATA_DUAL_WATCH) && dual_watch_show()) {
+                return false; // the dual watch back after a scan (dual_watch_scan_ended())
             }
             return true; // the status bar shows the battery and the time, the S meter the signal
         default:

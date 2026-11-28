@@ -322,7 +322,7 @@ const char *const text_en[TEXT_COUNT] = {
     [TEXT_UI_RX_ONLY_HINT] = "Set Rx only in CPS",
     [TEXT_UI_OUT_OF_BAND_HINT] = "Not in a TX band",
     [TEXT_UI_RELEASE_PTT] = "Release the PTT",
-    [TEXT_UI_UNLOCK_HINT] = "SK1 + * to unlock",
+    [TEXT_UI_UNLOCK_HINT] = "SK1 + # to unlock",
     [TEXT_UI_PC_INCOMING] = "Incoming call",
     [TEXT_UI_CALL_BACK_QM] = "Call back?",
     [TEXT_UI_PC_TO] = "PC to",
@@ -483,4 +483,5 @@ const char *const text_en[TEXT_COUNT] = {
     [TEXT_UI_CLOSE] = "Close",
     [TEXT_RF_NO_LOCK] = "RF NO LOCK",
     [TEXT_UI_RF_NO_LOCK_HINT] = "TX off: Firmware info",
+    [TEXT_KEY_UNLOCK] = "Unlock",
 };

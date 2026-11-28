@@ -41,6 +41,7 @@
 #include "flash.h"
 #include "codeplug.h"
 #include "power.h"
+#include "tones.h"
 
 #define FLASH_PART_OFFSET (128 * 1024)
 
@@ -124,6 +125,26 @@ static void check_channels_per_zone(void)
     }
 }
 
+static uint32_t channel_address(int number);
+
+static bool all_ones(const uint8_t *data, unsigned size)
+{
+    for (unsigned i = 0; i < size; i++) {
+        if (data[i] != 0xFF) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The 56 stored bytes of a channel that was never written: no real channel reads like that
+static bool channel_erased(int number)
+{
+    uint8_t stored[CHANNEL_SIZE];
+
+    return flash_read(channel_address(number), stored, sizeof(stored)) && all_ones(stored, sizeof(stored));
+}
+
 static uint32_t bank_header_address(int bank)
 {
     if (bank == 0) {
@@ -138,6 +159,24 @@ void codeplug_init(void)
     flash_read(ADDR_ZONE_IN_USE, zones_in_use, sizeof(zones_in_use));
     for (int bank = 0; bank < CHANNEL_BANKS; bank++) {
         flash_read(bank_header_address(bank), &channels_in_use[bank * 16], 16);
+    }
+    // A window that was never written reads as all ones: 256 zones (ZONES_MAX is 68) and every channel in use. A
+    // zone bitmap of all ones cannot be a real one; a bank's can (its 128 channels all in use), so a channel of
+    // such a bank is kept only when its stored record is not erased as well.
+    if (all_ones(zones_in_use, sizeof(zones_in_use))) {
+        memset(zones_in_use, 0, sizeof(zones_in_use));
+    }
+    for (int bank = 0; bank < CHANNEL_BANKS; bank++) {
+        uint8_t *header = &channels_in_use[bank * (CHANNELS_PER_BANK / 8)];
+
+        if (!all_ones(header, CHANNELS_PER_BANK / 8)) {
+            continue;
+        }
+        for (int i = 0; i < CHANNELS_PER_BANK; i++) {
+            if (channel_erased((bank * CHANNELS_PER_BANK) + i + 1)) {
+                header[i / 8] &= (uint8_t)~(1 << (i % 8));
+            }
+        }
     }
     check_channels_per_zone();
 
@@ -311,6 +350,9 @@ static uint16_t css_from_codeplug(uint16_t tone)
 {
     if ((tone == 0) || (tone == CODEPLUG_CSS_NONE)) {
         return CODEPLUG_CSS_NONE;
+    }
+    if ((tone & TONES_DCS) && ((tone & TONES_DCS_CODE) == 0x345)) {
+        return (uint16_t)((tone & ~TONES_DCS_CODE) | 0x346); // D345 (not a DCS code) in older lists: D346 (#206)
     }
     return ((tone & 0xC000) == 0) ? (uint16_t)codeplug_bcd_to_int(tone) : tone;
 }
@@ -486,7 +528,7 @@ bool codeplug_write_channel(int number, const codeplug_channel_t *channel)
     return flash_write(channel_address(number), (const uint8_t *)&stored, CHANNEL_SIZE);
 }
 
-// The bit of the channel in the table before its bank, then the tables read again
+// The bit of the channel in the table before its bank, and in the copy of that table here
 int codeplug_write_new_channel(const codeplug_channel_t *channel)
 {
     int number = CODEPLUG_CHANNELS_MIN;
@@ -509,7 +551,10 @@ int codeplug_write_new_channel(const codeplug_channel_t *channel)
     if (!flash_write(address, &byte, 1)) {
         return 0;
     }
-    codeplug_init();
+    // Not codeplug_init(): it would also read back the last used table, which the flash has only as of the last
+    // power off (last_used_save())
+    channels_in_use[index / 8] |= (uint8_t)(1 << (index % 8));
+    channel_total++;
     return number;
 }
 

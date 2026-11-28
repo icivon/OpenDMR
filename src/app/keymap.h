@@ -63,12 +63,14 @@ typedef enum {
     KEYMAP_SCAN_DOWN,          // SK1 + DOWN: the same, downwards
     KEYMAP_APRS_TOGGLE,        // SK1 + 1: APRS beaconing on / off (OpenGD77)
     KEYMAP_APRS_SEND,          // SK1 + 3: an APRS beacon now (2 is in SK1's column, SK2 + 2 a quick key)
-    KEYMAP_LOCK,               // SK1 held alone: the keypad lock (as * in the main menu)
+    KEYMAP_LOCK,               // SK1 + #: the keypad lock (as * in the main menu)
+    KEYMAP_UNLOCK,             // SK1 + # while locked: unlocked (only there: the same keys as the lock can be set)
     KEYMAP_ACTIONS
 } keymap_action_t;
 
 #define KEYMAP_SCREEN_CHANNEL 0x01
 #define KEYMAP_SCREEN_VFO     0x02
+#define KEYMAP_SCREEN_LOCKED  0x04 // the keypad locked (lock_screen.c)
 
 typedef struct {
     uint8_t key;       // UI_KEY_x; UI_KEY_COUNT: none
@@ -81,7 +83,8 @@ void keymap_load(void); // the stored bindings, else the defaults
 
 // The action of a key event on a screen (KEYMAP_SCREEN_x); KEYMAP_NONE: not a shortcut. A short press acts on the
 // press (and repeats when held) when the same keys held aren't also a long press shortcut, else on the release; SK1
-// or SK2 alone on its release, when no other key was pressed with it. The screens give it all their key events.
+// or SK2 alone on its release, when no other key was pressed with it (held long, nothing: a side key alone has no
+// long press). A long press acts at its time, still held. The screens give it all their key events.
 keymap_action_t keymap_action(const ui_event_t *ev, uint8_t screen);
 
 text_id_t keymap_action_name(keymap_action_t action);

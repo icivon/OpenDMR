@@ -109,13 +109,14 @@ static char recent_name[CHANNEL_PANEL_RECENT][LAST_HEARD_TEXT_SIZE];
 static char recent_detail[CHANNEL_PANEL_RECENT][16];
 static char recent_when[CHANNEL_PANEL_RECENT][16];
 
-// The squelch, power, mode and bandwidth changed with the keys on this screen: the channel's for now, never written
-// (only the channel details write a channel). Gone with another channel, the VFO, the channel details or power off,
-// as the TG and timeslot picked here (tx_target_channel_forget()).
+// The squelch, power, mode, bandwidth and DG-ID changed with the keys on this screen: the channel's for now, never
+// written (only the channel details write a channel). Gone with another channel, the VFO, the channel details or power
+// off, as the TG and timeslot picked here (tx_target_channel_forget()).
 #define TEMP_SQL   0x01
 #define TEMP_POWER 0x02
 #define TEMP_MODE  0x04
 #define TEMP_WIDE  0x08
+#define TEMP_DGID  0x10
 static struct {
     int number; // the channel they belong to; 0: none
     uint8_t what; // TEMP_x
@@ -123,6 +124,7 @@ static struct {
     uint8_t power;
     uint8_t mode;
     bool wide;
+    uint8_t dgid;
 } temp;
 
 /* The scan (scan.c; uiChannelMode.c scanSearchForNextChannel()): the zone's channels in turn, skipping the ones
@@ -310,6 +312,7 @@ static void keep(uint8_t what)
     temp.power = channel.libre_dmr_power;
     temp.mode = channel.mode;
     temp.wide = ((channel.flag4 & FLAG4_BANDWIDTH_25K) != 0);
+    temp.dgid = codeplug_ysf_dgid(&channel);
 }
 
 // The channel at the position read again (it may have been edited), with the changes made here for it (temp); another
@@ -344,6 +347,9 @@ static void load(void)
     }
     if (temp.what & TEMP_WIDE) {
         channel.flag4 = (uint8_t)(temp.wide ? (channel.flag4 | FLAG4_BANDWIDTH_25K) : (channel.flag4 & ~FLAG4_BANDWIDTH_25K));
+    }
+    if (temp.what & TEMP_DGID) {
+        codeplug_set_ysf_dgid(&channel, temp.dgid);
     }
 }
 
@@ -454,6 +460,8 @@ static void format_names(char *zone_text, size_t zone_size_bytes, char *name, si
 }
 
 // At the start, and back from the menus: the zone of the settings (the zone list may have changed it)
+static int position_of(int number);
+
 static void enter(void *arg)
 {
     static bool started = false;
@@ -470,6 +478,14 @@ static void enter(void *arg)
         started = true;
         sorted = sort; // the distance sort turned on or off in the quick menu: the zone read again
         select_zone(current);
+    } else if (zone.index < 0) {
+        // "All channels": a channel written since (VFO --> New channel takes the lowest free number) moves the
+        // channels above it one place on, so the position carried over here would name a different channel
+        int at = position_of(channel_screen_channel);
+
+        if (at >= 0) {
+            position = at;
+        }
     }
     load(); // the channel may have been written (channel details, VFO --> channel) or the zone changed (zone list)
     (void)dual_watch_show(); // dual watch on: shown over this screen, its selected path this channel
@@ -619,6 +635,15 @@ static void reply_to_call(void)
     ui_key_beep(SOUND_ACK);
 }
 
+// YSF, # (number_entry_open_dgid()): the DG-ID for now, as the other key changes
+static void set_dgid(uint8_t dgid)
+{
+    if (has_channel) {
+        codeplug_set_ysf_dgid(&channel, dgid);
+        keep(TEMP_DGID);
+    }
+}
+
 static bool do_action(keymap_action_t action)
 {
     bool dmr = (channel.mode == CODEPLUG_MODE_DMR);
@@ -626,7 +651,11 @@ static bool do_action(keymap_action_t action)
 
     switch (action) {
         case KEYMAP_NUMBER_ENTRY:
-            ui_push(&number_entry_screen, analog ? NUMBER_ENTRY_DTMF : NUMBER_ENTRY_TX_TARGET);
+            if (channel.mode == CODEPLUG_MODE_YSF) {
+                number_entry_open_dgid(codeplug_ysf_dgid(&channel), set_dgid); // YSF has no TG: its DG-ID
+            } else {
+                ui_push(&number_entry_screen, analog ? NUMBER_ENTRY_DTMF : NUMBER_ENTRY_TX_TARGET);
+            }
             return false;
         case KEYMAP_CONTACT_LIST:
             contacts_open_quick_list(analog);
@@ -870,6 +899,9 @@ static bool handle(const ui_event_t *ev)
             if ((ev->what & UI_DATA_AUTOLOCK) && !lock_screen_is_keypad_locked()) {
                 lock_screen_lock(true, true); // the auto lock (keypad and PTT, as the main firmware)
                 return false;
+            }
+            if ((ev->what & UI_DATA_DUAL_WATCH) && dual_watch_show()) {
+                return false; // the dual watch back after a scan (dual_watch_scan_ended())
             }
             return true; // the status bar shows the battery and the time, the S meter the signal
         default:

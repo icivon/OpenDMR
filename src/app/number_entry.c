@@ -35,7 +35,8 @@
  * The left key takes it: a TG, PC or the all call overrides the channel's contact (tx_target.c), a contact also sets
  * its timeslot. Then back home. The own ID from the general options is written to the codeplug (kept after power off),
  * then back there. On FM it is the DTMF entry: the digits, * and # type the code, LEFT deletes,
- * the left key sends it (tx_screen_send_dtmf()).
+ * the left key sends it (tx_screen_send_dtmf()). On YSF it is the DG-ID entry (0 - 99): the current one shown, the
+ * first digit typed replaces it, the left key gives it to the home screen (number_entry_open_dgid()).
  */
 
 #include <stdio.h>
@@ -72,13 +73,18 @@ enum {
     ENTRY_OWN_ID = ENTRIES,  // from the general options only
     ENTRY_DTMF,              // its own, # does not change it
     ENTRY_GATEWAY,           // the APRS-over-DMR gateway, its own too
+    ENTRY_DGID,              // YSF: the DG-ID, its own too
 };
+
+#define DGID_DIGITS       2
+#define NUMBER_ENTRY_DGID ((void *)6)
 
 static struct {
     int type;
     bool own_only;
     bool nxdn;    // the own NXDN ID (own_only too)
     bool gateway; // the APRS-over-DMR gateway (own_only too)
+    bool fresh;   // the DG-ID shown, nothing typed yet: a digit replaces it
     char digits[CODEPLUG_DTMF_CODE_LENGTH + 1]; // DIGITS of a number, or the DTMF code
     int length;
     int contact; // position in all the contacts (codeplug_contact_at())
@@ -87,6 +93,8 @@ static struct {
 } entry;
 
 static codeplug_contact_t contact; // static: not on the UI task stack
+static uint8_t dgid_current;
+static void (*dgid_set)(uint8_t dgid);
 
 static void set_digits(uint32_t value)
 {
@@ -110,7 +118,12 @@ static void enter(void *arg)
     entry.own_only = (arg == NUMBER_ENTRY_OWN_ID) || entry.nxdn || entry.gateway;
     entry.type = entry.gateway ? ENTRY_GATEWAY
                               : (entry.own_only ? ENTRY_OWN_ID : ((arg == NUMBER_ENTRY_DTMF) ? ENTRY_DTMF : ENTRY_TG));
-    if (entry.nxdn) {
+    if (arg == NUMBER_ENTRY_DGID) {
+        entry.type = ENTRY_DGID;
+        entry.own_only = true; // # doesn't change it
+        entry.fresh = true;
+        set_digits(dgid_current);
+    } else if (entry.nxdn) {
         set_digits(nxdn_id_stored());
     } else if (entry.gateway) {
         set_digits(extra_options_aprs_dmr_gateway());
@@ -135,10 +148,27 @@ static void next_type(void)
     }
 }
 
+void number_entry_open_dgid(uint8_t current, void (*set)(uint8_t dgid))
+{
+    dgid_current = (current <= CODEPLUG_YSF_DGID_MAX) ? current : 0;
+    dgid_set = set;
+    ui_push(&number_entry_screen, NUMBER_ENTRY_DGID);
+}
+
 static void take(void)
 {
     uint32_t value = (uint32_t)strtoul(entry.digits, NULL, 10);
 
+    if (entry.type == ENTRY_DGID) {
+        if ((entry.length == 0) || (value > CODEPLUG_YSF_DGID_MAX) || (dgid_set == NULL)) {
+            ui_key_beep(SOUND_ERROR);
+            return;
+        }
+        ui_key_beep(SOUND_ACK);
+        dgid_set((uint8_t)value);
+        ui_pop();
+        return;
+    }
     if (entry.type == ENTRY_CONTACT) {
         if (!read_contact()) {
             ui_key_beep(SOUND_ERROR);
@@ -196,6 +226,11 @@ static void step(int direction)
         if (entry.contact == 0) {
             ui_key_beep(SOUND_KEY_FIRST_ITEM);
         }
+    } else if (entry.type == ENTRY_DGID) {
+        int value = (int)strtoul(entry.digits, NULL, 10) + direction;
+
+        set_digits((uint32_t)((value < 0) ? 0 : ((value > CODEPLUG_YSF_DGID_MAX) ? CODEPLUG_YSF_DGID_MAX : value)));
+        entry.fresh = false;
     } else if (entry.length > 0) {
         uint32_t value = (uint32_t)strtoul(entry.digits, NULL, 10);
 
@@ -289,6 +324,18 @@ static bool handle(const ui_event_t *ev)
     }
     if (repeat && (ev->key == UI_KEY_LEFT) && (entry.length > 0)) {
         entry.digits[--entry.length] = '\0';
+        entry.fresh = false;
+        return true;
+    }
+    if ((entry.type == ENTRY_DGID) && press && (digit >= 0)) {
+        if (entry.fresh || ((entry.length == 1) && (entry.digits[0] == '0'))) {
+            entry.length = 0; // the one shown, or a lone 0: replaced
+        }
+        entry.fresh = false;
+        if (entry.length < DGID_DIGITS) {
+            entry.digits[entry.length++] = (char)('0' + digit);
+            entry.digits[entry.length] = '\0';
+        }
         return true;
     }
     if (press && (digit >= 0) && (entry.length < DIGITS) && ((entry.length > 0) || (digit > 0))) {
@@ -356,6 +403,21 @@ static void draw(void)
         if (entry.length < CODEPLUG_DTMF_CODE_LENGTH) {
             draw_fill_rect(end, DIGITS_Y + font_roboto32_bold.line_height - 2, 16, 3, THEME_COLOUR_ACCENT); // the cursor
         }
+        bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_BACK));
+        return;
+    }
+    if (entry.type == ENTRY_DGID) {
+        shown.max = DGID_DIGITS;
+        draw_text(x, LABEL_Y, "DG-ID", &font_roboto17_bold, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT);
+        memcpy(shown.digits, entry.digits, DGID_DIGITS);
+        shown.count = (uint8_t)entry.length;
+        digit_entry_draw(&shown, x, DIGITS_Y);
+        snprintf(buffer, sizeof(buffer), "%s: %u   (0 - %u)", text(TEXT_UI_NOW), (unsigned)dgid_current,
+                 (unsigned)CODEPLUG_YSF_DGID_MAX);
+        draw_text(x, HINT_Y, buffer, &font_roboto17, FONT_ALIGN_LEFT, THEME_COLOUR_TEXT_LABEL);
+        draw_hline(x, LINE_Y, FB_WIDTH - (2 * WIDGET_MARGIN), THEME_COLOUR_LINE);
+        draw_text(x, LINE_Y + 10, text(TEXT_UI_UP_DOWN_STEP), &font_roboto17, FONT_ALIGN_LEFT,
+                  THEME_COLOUR_TEXT_SECOND);
         bottom_bar_draw_soft_keys(text(TEXT_UI_OK), text(TEXT_UI_BACK));
         return;
     }

@@ -82,7 +82,15 @@ def build():
     if make is None:
         sys.exit('make not found: the toolchain goes into toolchain/ (README, "Building")')
     print('building the firmware ...')
-    r = subprocess.run([make], cwd=os.path.join(ROOT, 'src'), env=env, capture_output=True, text=True)
+    src = os.path.join(ROOT, 'src')
+    # src/Makefile gates -DRX_CAPTURE, -DOPENDMR_DEBUG and -DOPENDMR_DELAY_LOG on these variables, and its -MMD
+    # dependencies follow headers, not CFLAGS; make also reads the variables from the environment passed above.
+    # So a release cleans and names them itself: a command-line assignment overrides the environment.
+    plain = ['RX_CAPTURE=', 'DEBUG=', 'DELAY_LOG=', 'DEBUG_KEEP=']
+    r = subprocess.run([make, 'clean'], cwd=src, env=env, capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(r.stdout[-3000:] + r.stderr[-3000:] + '\nmake clean failed')
+    r = subprocess.run([make] + plain, cwd=src, env=env, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(r.stdout[-3000:] + r.stderr[-3000:] + '\nthe build failed')
     print(r.stdout.strip().splitlines()[-1])

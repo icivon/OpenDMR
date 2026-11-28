@@ -40,8 +40,9 @@
 #include "keymap.h"
 
 #define KEYMAP_DATA_TYPE 0x44540002 // a custom data block of this firmware ("DT", 2)
-#define KEYMAP_VERSION   9 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3,
-                           // 8: KEYMAP_LOCK, 9: KEYMAP_LOCK on SK1 held (SK2 held is a modifier: "Delete", "Close")
+#define KEYMAP_VERSION   10 // 2: KEYMAP_FM_RADIO, 3: KEYMAP_SCAN, 4: KEYMAP_SCAN_DOWN, 5: the APRS keys, 7: SK1 + 3,
+                            // 8: KEYMAP_LOCK, 9: KEYMAP_LOCK on SK1 held (SK2 held is a modifier: "Delete", "Close"),
+                            // 10: KEYMAP_LOCK on SK1 + #, KEYMAP_UNLOCK, no side key held alone
 #define KEYMAP_SLOTS     32 // room for more actions: a block keeps its size
 #define SIDE_KEYS        (UI_MODIFIER_SK1 | UI_MODIFIER_SK2)
 #define NO_KEY           {UI_KEY_COUNT, 0, 0, 0}
@@ -80,7 +81,8 @@ static const action_t actions[KEYMAP_ACTIONS] = {
     [KEYMAP_SCAN_DOWN] = {TEXT_KEY_SCAN_DOWN, BOTH, false, {UI_KEY_DOWN, SK1, 0, 0}},
     [KEYMAP_APRS_TOGGLE] = {TEXT_KEY_APRS_TOGGLE, BOTH, false, {UI_KEY_1, SK1, 0, 0}},
     [KEYMAP_APRS_SEND] = {TEXT_KEY_APRS_SEND, BOTH, false, {UI_KEY_3, SK1, 0, 0}},
-    [KEYMAP_LOCK] = {TEXT_KEY_LOCK, BOTH, false, {UI_KEY_SK1, 0, 1, 0}},
+    [KEYMAP_LOCK] = {TEXT_KEY_LOCK, BOTH, false, {UI_KEY_HASH, SK1, 0, 0}},
+    [KEYMAP_UNLOCK] = {TEXT_KEY_UNLOCK, KEYMAP_SCREEN_LOCKED, false, {UI_KEY_HASH, SK1, 0, 0}},
 };
 
 static struct {
@@ -143,6 +145,21 @@ void keymap_load(void)
             (void)keymap_set(KEYMAP_LOCK, actions[KEYMAP_LOCK].binding);
         }
     }
+    if (stored.version < 10) {
+        // A side key held alone acted only on its release (until then another key could come with it): no more. The
+        // lock on it moved to SK1 + #, another action on it lost its keys
+        for (int i = 1; i < KEYMAP_ACTIONS; i++) {
+            const keymap_binding_t *b = &stored.bindings[i];
+
+            if (is_side(b->key) && (b->modifiers == 0) && b->long_press) {
+                stored.bindings[i] = (keymap_binding_t)NO_KEY;
+                if (i == KEYMAP_LOCK) {
+                    (void)keymap_set(KEYMAP_LOCK, actions[KEYMAP_LOCK].binding);
+                }
+            }
+        }
+        (void)keymap_set(KEYMAP_UNLOCK, actions[KEYMAP_UNLOCK].binding); // was SK1 + *, fixed
+    }
     stored.version = KEYMAP_VERSION;
 }
 
@@ -191,13 +208,12 @@ keymap_action_t keymap_action(const ui_event_t *ev, uint8_t screen)
         case UI_EVENT_KEY_REPEAT:
             return (!has_long && !is_side(key) && actions[short_action].repeats) ? short_action : KEYMAP_NONE;
         case UI_EVENT_KEY_LONG:
-            // a side key: on its release, if no other key came with it (held a moment before a combination it
-            // must not act)
+            // at the long press time, still held; a side key alone has no long press (held, it waits for the key
+            // that comes with it; released without one, nothing)
             return is_side(key) ? KEYMAP_NONE : find(key, modifiers, true, screen);
         case UI_EVENT_KEY_RELEASE:
             if (ev->long_press) {
-                return (is_side(key) && !side_combined[key - UI_KEY_SK1]) ? find(key, modifiers, true, screen)
-                                                                         : KEYMAP_NONE;
+                return KEYMAP_NONE;
             }
             if (is_side(key)) {
                 return side_combined[key - UI_KEY_SK1] ? KEYMAP_NONE : short_action;
