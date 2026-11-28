@@ -120,6 +120,11 @@ uint8_t radio_signal(void);    // RSSI, averaged for showing (dBm = value - 177 
 int radio_signal_dbm(void);
 uint8_t radio_signal_raw(void); // the last reading (the RSSI screen)
 uint8_t radio_noise(void);      // the last noise reading (the RSSI screen)
+#if BOARD_VOLUME_POT
+// An idle digital channel (no engine running): one reading for the meter and the S meter's average, so the reading
+// does not stay at the level of the last call (the DM-36, 2026-11-28)
+void radio_signal_sample(void);
+#endif
 
 /* Scanning (scan.c, the dual watch) */
 
@@ -133,6 +138,8 @@ void radio_analog_volume_step(int steps);
 bool radio_volume_from_pot(uint8_t level);
 uint8_t radio_analog_volume(void);               // the level actually in use (show it, not the pot's raw reading)
 uint8_t radio_volume_percent(void);              // the same level as 0 - 100 (the DM-36's screen shows it)
+// 0x48 has no mute (its DAC at 0 still passes the discriminator): at volume 0 the AF output (0x47) is the mute
+bool radio_analog_muted(void);
 bool radio_is_scanning(void);
 // Scanning a digital channel: the strongest reading since the last retune settled, and how many (0: none yet)
 uint8_t radio_scan_peak(uint16_t *samples);

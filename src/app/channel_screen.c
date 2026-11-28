@@ -867,6 +867,29 @@ static bool handle_key(const ui_event_t *ev)
     }
 }
 
+#if BOARD_VOLUME_POT
+// The receive state the screen was last drawn in: a change (the squelch opening or closing) redraws the whole screen,
+// a mere reading of the meter only the meter (2026-11-28)
+static bool signal_open;
+
+// The S meter and the receive indicator alone: the DM-36 drew the whole screen for every reading, and the screen
+// blinked with the squelch (2026-11-28). The status bar takes its battery and time itself, so redrawing it here is safe
+static void draw_signal(void)
+{
+    status_bar_data_t status = {0};
+    s_meter_data_t meter = {0};
+
+    meter.active = true;
+    meter.open = radio_is_receiving();
+    s_meter_set_signal(&meter, radio_signal_dbm());
+    meter.compact = true;
+    status.state = meter.open ? STATUS_BAR_RECEIVING : STATUS_BAR_IDLE;
+    status.signal_bars = s_meter_bars(&meter);
+    status_bar_draw(&status);
+    s_meter_draw(S_METER_Y, &meter);
+}
+#endif
+
 static bool handle(const ui_event_t *ev)
 {
     if (lock_screen_filter(ev)) {
@@ -910,6 +933,19 @@ static bool handle(const ui_event_t *ev)
             if ((ev->what & UI_DATA_DUAL_WATCH) && dual_watch_show()) {
                 return false; // the dual watch back after a scan (dual_watch_scan_ended())
             }
+#if BOARD_VOLUME_POT
+            if (ev->what == UI_DATA_SIGNAL) {
+                bool open = radio_is_receiving();
+
+                if (open != signal_open) {
+                    // The squelch opened or closed: the whole screen, its receive indicators included
+                    signal_open = open;
+                    return true;
+                }
+                draw_signal(); // a reading while it stays open: the meter alone (a full redraw blinked the screen)
+                return false;
+            }
+#endif
             return true; // the status bar shows the battery and the time, the S meter the signal
         default:
             return false;
@@ -1136,6 +1172,9 @@ static void draw(void)
     meter.compact = true; // as on the VFO screen and the caller panel
     s_meter_draw(S_METER_Y, &meter);
     bottom_bar_draw(&bottom);
+#if BOARD_VOLUME_POT
+    signal_open = meter.open; // the state this screen shows now
+#endif
 }
 
 const ui_screen_t channel_screen = {

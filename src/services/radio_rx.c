@@ -179,6 +179,8 @@ static uint8_t rx_vol_target;
 // the volume back to the calibration (13) at every channel change (2026-11-28).
 static bool rx_vol_set;
 
+static void RAM_CODE audio_amp(bool on);
+
 // The analog receive level (0x48) takes 0 - 15: the DM-36's percentage quantises to it, the PCM scaling keeps it
 static uint8_t analog_level(uint8_t level)
 {
@@ -189,11 +191,34 @@ static uint8_t analog_level(uint8_t level)
 #endif
 }
 
+#if BOARD_VOLUME_POT
+// 0x48's DAC at 0 still passes the discriminator (2026-11-29): at volume 0 the AF output (0x47) is held muted as
+// well, wherever it would be switched on - the squelch opening, the end of a prompt
+bool radio_analog_muted(void)
+{
+    return rx_vol_set && (rx_vol_target == 0);
+}
+
+// The FM noise reading at the squelch edge moves by several counts from one check to the next (25 ms): a state has
+// to hold for two checks before it flips, or the squelch, the LED and the screen flickered with nothing on the air
+#define SQUELCH_FLAP 2
+static uint8_t squelch_low;  // checks in a row under the opening level
+static uint8_t squelch_high; // checks in a row over the closing level
+#endif
+
 static void apply_knob_volume(uint8_t level)
 {
     rx_vol_set = true;
     trx_set_volume(analog_level(level));
     modem_set_rx_volume(level);
+#if BOARD_VOLUME_POT
+    // Volume 0 while the squelch is open: neither the AF output nor the amplifier stays on, and both come back with
+    // the level. 0x6040 alone still lets the discriminator through (2026-11-28)
+    if (rs.has_carrier) {
+        trx_af_out(!beep_path && !radio_analog_muted());
+        audio_amp(!radio_analog_muted());
+    }
+#endif
 }
 
 static void audio_switch(void)
@@ -213,10 +238,19 @@ static void RAM_CODE audio_amp(bool on)
 
 /* Receive */
 
+#if BOARD_VOLUME_POT
+// The reading the UI was last told about (post_signal()): a change has to reach the screen even when the next one
+// arrives while the post throttle's window is still busy (2026-11-28)
+static int posted_signal_dbm = 0x7FFFFFFF;
+#endif
+
 void RAM_CODE post_signal(void)
 {
     ui_event_t ev = {.type = UI_EVENT_DATA, .what = UI_DATA_SIGNAL};
 
+#if BOARD_VOLUME_POT
+    posted_signal_dbm = radio_signal_dbm();
+#endif
     ui_post(&ev);
 }
 
@@ -225,13 +259,27 @@ void squelch_close(void)
     audio_amp(false);
     trx_af_out(false);
     leds_green(false);
+#if BOARD_VOLUME_POT
+    if (rs.has_carrier || rs.speaker_open) {
+        rs.has_carrier = false;
+        rs.speaker_open = false;
+    }
+    // Always, even when the squelch was already shut: the meter and the receive indicator have to go back to idle, and
+    // a reading that stopped moving (no post) left the screen looking like the transmission was still on (2026-11-28)
+    post_signal();
+#else
     if (rs.has_carrier || rs.speaker_open) {
         rs.has_carrier = false;
         rs.speaker_open = false;
         post_signal();
     }
+#endif
     css_missing = 0;
     signal_low = 0;
+#if BOARD_VOLUME_POT
+    squelch_low = 0;
+    squelch_high = 0;
+#endif
 }
 
 // The speaker off for a transmission started by the DMR engine (radio_dmr_tx_on()): that path never went through
@@ -466,14 +514,16 @@ static void RAM_CODE add_sample(uint8_t signal)
     int32_t moved = average - signal_shown;
 
     if ((moved >= SIGNAL_MOVE) || (moved <= -SIGNAL_MOVE)) {
+#if BOARD_VOLUME_POT
+        signal_shown = (uint8_t)average;
+#else
         // Notify the UI only when the displayed, 3 dB-quantised reading changed: posting on every small reading moved
         // the meter and redrew the receive screen constantly (2026-11-28)
         int shown_before = radio_signal_dbm();
 
         signal_shown = (uint8_t)average;
         // The digital receivers do not post a signal when a call comes in: without this the screen stayed dark with
-        // the volume at 0, though the signal was there. Rate-limited, and analog modes excluded - there these events
-        // were what made the receive screen flicker (2026-11-28)
+        // the volume at 0, though the signal was there
         if (!is_analog() && (radio_signal_dbm() != shown_before)) {
             TickType_t now = xTaskGetTickCount();
 
@@ -482,8 +532,39 @@ static void RAM_CODE add_sample(uint8_t signal)
                 post_signal();
             }
         }
+#endif
     }
+
+#if BOARD_VOLUME_POT
+    // Every change of the displayed reading, throttled to one event in 400 ms. Comparing this sample with the previous
+    // one (and only while the reading was still moving) lost a change that landed inside the throttle's window: after a
+    // transmission ended the meter held the level of the last call, fully lit, until something else posted (2026-11-28)
+    if (radio_signal_dbm() != posted_signal_dbm) {
+        TickType_t now = xTaskGetTickCount();
+
+        if ((now - last_signal_post) >= pdMS_TO_TICKS(400)) {
+            last_signal_post = now;
+            post_signal();
+        }
+    }
+#endif
 }
+
+#if BOARD_VOLUME_POT
+// An idle digital channel: the meter reads the signal even when the engine is not running (read_signal(), radio.c).
+// The engine's readings stop with it, between calls and after a transmission, and the meter then held the level of the
+// last call - the screen looked like the transmission was still on (2026-11-28)
+void radio_signal_sample(void)
+{
+    uint8_t signal;
+    uint8_t noise;
+
+    trx_read_signal(&signal, &noise);
+    signal_raw = signal;
+    noise_raw = noise;
+    add_sample(signal);
+}
+#endif
 
 /* The carrier beeps (applicationMain.c rxBeepsHandler()): the speaker on and off, the end beep a moment later; none
    while scanning (as the main firmware: beeps aren't allowed while scanning) */
@@ -501,6 +582,12 @@ bool radio_is_scanning(void)
 
 static bool rx_beeps(void)
 {
+#if BOARD_VOLUME_POT
+    // A carrier prompt at volume 0 would switch the amplifier on with the squelch: that is not silent (2026-11-28)
+    if (radio_analog_muted()) {
+        return false;
+    }
+#endif
     return !rs.is_scanning && (settings.beep_options & BEEP_RX_CARRIER) && (settings.audio_prompt_mode != SOUND_PROMPT_SILENT);
 }
 
@@ -639,8 +726,19 @@ void RAM_CODE squelch_check(void)
     add_sample(signal);
 
     if (fm) {
+#if BOARD_VOLUME_POT
+        // The noise reading at the edge of the squelch moves by several counts between two checks: a state holds for
+        // two checks (50 ms) before it flips
+        squelch_low = (noise < level) ? (uint8_t)(squelch_low < SQUELCH_FLAP ? squelch_low + 1 : squelch_low) : 0;
+        squelch_high = (noise > (level + SQUELCH_HYSTERESIS))
+                           ? (uint8_t)(squelch_high < SQUELCH_FLAP ? squelch_high + 1 : squelch_high)
+                           : 0;
+        open = (squelch_low >= SQUELCH_FLAP);
+        close = (squelch_high >= SQUELCH_FLAP);
+#else
         open = (noise < level);
         close = (noise > (level + SQUELCH_HYSTERESIS));
+#endif
     } else {
         // 3 dB under the opening level, and for the hold time in a row: a moment under it (a dip of the modulation, a
         // pause between words) doesn't close it
@@ -657,7 +755,11 @@ void RAM_CODE squelch_check(void)
     if (!rs.has_carrier && open && ((int32_t)(xTaskGetTickCount() - settled_at) >= 0)) {
         rs.has_carrier = true;
         css_missing = 0;
+#if BOARD_VOLUME_POT
+        trx_af_out(!radio_analog_muted());
+#else
         trx_af_out(true);
+#endif
         leds_green(true);
         post_signal();
     } else if (rs.has_carrier && close) {
@@ -682,7 +784,14 @@ void RAM_CODE squelch_check(void)
         if (is_analog()) {
             modem_fm_audio(true);
         }
+#if BOARD_VOLUME_POT
+        // Volume 0: the AF output (0x6040) still passes the discriminator's hiss, so the amplifier is kept off too -
+        // the squelch, the receive indicator and the meter keep working. A carrier prompt would switch the amplifier
+        // back on for its length, so there is none at volume 0 (rx_beeps())
+        audio_amp(!radio_analog_muted());
+#else
         audio_amp(true);
+#endif
         rx_beep_begin();
         post_signal();
     } else if (rs.speaker_open && !tone_ok) {
@@ -862,6 +971,18 @@ uint8_t radio_signal(void)
 
 int radio_signal_dbm(void)
 {
+#if BOARD_VOLUME_POT
+    // The meter shows the signal, not the receiver's audio state (2026-11-28): a carrier the squelch has not opened on
+    // reads at its level too, and the reading no longer freezes when the audio closes - the meter used to hold the level
+    // of the moment the squelch last opened, which left it looking busy after a transmission ended. The standby noise
+    // (some -140 dBm on the DM-36) is under the lowest segment and shows nothing. On a 3 dB grid, so a reading moving
+    // by a decibel or two no longer flips a bar back and forth.
+    const int offset = (rs.channel.rx_freq >= UHF_FROM) ? 185 : 195;
+    const int lowest = -121 - 6; // S0: under it there is no reading at all
+    int dbm = (((int)signal_shown - offset) / 3) * 3;
+
+    return (dbm < lowest) ? -140 : dbm;
+#else
     // Nothing received, nothing shown: the standby noise read as S1 / S2, and its jitter flickered the meter. And on a
     // 3 dB grid, so a reading moving by a decibel or two no longer flips a bar back and forth (2026-11-28).
     // The digital receivers run without a squelch: their carrier is digital_carrier, not rs.has_carrier. Gating on the
@@ -874,6 +995,7 @@ int radio_signal_dbm(void)
     int dbm = (int)signal_shown - ((rs.channel.rx_freq >= UHF_FROM) ? 185 : 195);
 
     return (dbm / 3) * 3;
+#endif
 }
 
 uint8_t radio_signal_raw(void)

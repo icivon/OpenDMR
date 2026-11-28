@@ -176,7 +176,7 @@ extern trx_driver_t trx_dm36;
  * (0x47 = 0x6943): it must not be written there, a beep would mute the
  * digital receive (the audio out of the FM value) until the next burst. */
 #define BOARD_BEEP_PATH_AF_OUT(on, carrier) \
-    do { if (is_analog()) { trx_af_out(!(on) && (carrier)); } } while (0)
+    do { if (is_analog()) { trx_af_out(!(on) && (carrier) && !radio_analog_muted()); } } while (0)
 #define BOARD_AMP_START_MS      120
 
 /* A CPS request that came from the LytLink UART2 link is remembered in bluetooth.c; only that reply is

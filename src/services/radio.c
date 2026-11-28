@@ -192,11 +192,23 @@ static void read_signal(void)
     if (eco_rx_off() || aprs_tuned_away()) {
         return;
     }
+#if BOARD_VOLUME_POT
+    // The transmitter's own level is not the channel's: read while transmitting and the meter started a call at the
+    // power of the one before (the DM-36, 2026-11-28)
+    if (radio_is_transmitting()) {
+        return;
+    }
+#endif
     if (is_analog() && !rs.is_transmitting) {
         squelch_check();
     } else if (rs.dmr_running) {
         dmr_signal();
     }
+#if BOARD_VOLUME_POT
+    else if (!is_analog()) {
+        radio_signal_sample(); // an idle digital channel: the meter keeps reading the signal (radio_rx.c)
+    }
+#endif
 }
 
 // Receiving: the VOX, the signal, the receive end beep, the power saving

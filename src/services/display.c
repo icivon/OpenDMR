@@ -42,6 +42,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "backlight.h"
+#include "board.h"
 #include "settings.h"
 #include "radio.h"
 #include "display.h"
@@ -53,6 +54,9 @@
 
 #define DEFAULT_PERCENT 100
 #define NIGHT_CHECK_MS  1000 // day or night looked at again while lit
+#if BOARD_VOLUME_POT
+#define LIGHT_SIGNAL_DBM (-121) // a signal the meter shows at all lights the screen, even with no audio yet (the DM-36)
+#endif
 
 #define AUTO_LIGHT_FROM 7  // local hours without a position
 #define AUTO_LIGHT_TO   19
@@ -217,6 +221,13 @@ void display_light_tick(uint32_t elapsed_ms)
         return;
     }
     heard = radio_audio_heard(); // FM or DMR audio
+#if BOARD_VOLUME_POT
+    // The DM-36 also lights on a signal alone, not only on the audio: a weak carrier, or a digital one whose call the
+    // engine has not taken yet, wakes the screen (2026-11-28)
+    if (!heard && (radio_signal_dbm() >= LIGHT_SIGNAL_DBM)) {
+        heard = true;
+    }
+#endif
     if (((mode == SETTINGS_BACKLIGHT_AUTO) && heard) || radio_is_transmitting()) {
         trigger(true); // lit while it lasts, the timeout runs after
         return;
