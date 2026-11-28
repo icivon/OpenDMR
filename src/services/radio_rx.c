@@ -948,6 +948,12 @@ void radio_broadcast_amp(bool on)
         audio_switch();
         taskEXIT_CRITICAL();
         vTaskDelay(pdMS_TO_TICKS(BROADCAST_PATH_SETTLE_MS));
+    } else if (on && rs.has_channel && is_analog()) {
+        // The receiver's audio and the FD6818's AF output share the speaker node (the switch's FD6818 side): without
+        // this the discriminator's noise plays under the station - the DM-36 heard nothing else while the receiver
+        // was not answering (2026-11-28)
+        trx_af_out(false);
+        vTaskDelay(pdMS_TO_TICKS(BROADCAST_PATH_SETTLE_MS));
     }
     taskENTER_CRITICAL();
     rs.broadcast_needs_amp = on;
@@ -962,6 +968,12 @@ void radio_broadcast_amp(bool on)
         if (rs.has_channel && !is_analog()) {
             trx_dmr_af(true);
         }
+    } else if (!on && rs.has_channel && is_analog()) {
+#if BOARD_VOLUME_POT
+        trx_af_out(!radio_analog_muted()); // the channel's audio back, as the squelch left it
+#else
+        trx_af_out(true);
+#endif
     }
 }
 

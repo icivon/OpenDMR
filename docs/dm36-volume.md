@@ -228,3 +228,47 @@ DM36 把电位器改接 ADC ch0，硬件音量链路不存在了，**软件必�
 | `src/services/sound.c` | `sound_task()` 318、开机音 412 / 422 |
 | `src/app/main.c` | `input_start()` 134、`sound_play_boot()` 139 |
 | `src/services/input.c` | 电位器采样与稳定判定 168-187 |
+
+## 10. V9 提示音：固定音量并降低（2026-11-28 晚，取代 V8）
+
+用户原话：**"音量旋钮既然无法解决，先按固定音量，降低开机音量和按键音。"**
+背景：先按 V8 试过让提示音跟随旋钮（`percent` 乘在 `note()` 里），
+`docs/dm36-porting.md` 4.1.1 也证实这块板的 FM 子板是 FD6818B（BK4829）而不是问题所在；
+旋钮到基带 DAC 的提示音通路在硬件上够不到，所以 V8 作废，改回"固定值"，并且**把固定值降低**。
+
+### 10.1 提示音的音量从哪里来（不变的部分）
+
+- `sound.c` 的 `note()` 只有一个衰减：`sine[*index] >> shift`，`shift` 来自
+  `next_volume`，它为 -1 时就是 `settings.beep_volume_divider`（菜单"提示音音量"，0..10，
+  菜单按 `(2 - divider) x 3 dB` 显示，出厂 4 = -6 dB）。
+- 开机音 `sound_play_boot()` 与按键音 `sound_play()` 都传 `0xFF` = "用菜单值"，所以两者同源。
+- 基带 DAC 的增益固定（`GCR_DACL`），**旋钮（电位器）完全不参与**，V8 想越过硬件去接旋钮，
+  已否决。
+
+### 10.2 本次改动
+
+1. **回退 V8**：删掉 `note()` 的 `percent` 参数、`sound_task()` 的百分比计算、`radio_prompt_percent()`
+   的声明与实现。提示音重新只由 `shift` 决定。
+2. **降低固定值**，只针对**按键音与开机音**（用户点名的两处）：
+   - `board.h` 新增默认 0 的 `BOARD_PROMPT_DIVIDER_MIN`；
+   - `board_dm36.h` 定义 **6**（即 -12 dB，比出厂 4 再降 6 dB，幅度 1/64）；
+   - `sound.c` 的 `prompt_divider()` 取 `max(settings.beep_volume_divider, BOARD_PROMPT_DIVIDER_MIN)`，
+     `sound_play()` 的按键音与 `sound_play_boot()` 的两条路径用它；其它提示音（低电量、错误音、
+     发射提示音）仍按菜单值不动。
+3. 菜单仍可**更轻**（7..10），不能更响（0..5 被抬到 6）。菜单显示的 dB 只对其它提示音准确，
+   按键音/开机音比它低 6 dB —— 这是"先固定"的临时状态，用户确认后再决定是否改成独立设置项。
+4. DM32 侧：`BOARD_PROMPT_DIVIDER_MIN` 为 0，`prompt_divider()` 整体被 `#if` 排除、
+   `BOOT_PROMPT_VOLUME` 仍是 `0xFF`，DM-32 产物不变。
+
+### 10.3 判定
+
+- 开机音、按任意键：比改动前（-6 dB）**明显轻**，但仍听得到；不再有"叮"一下很响的感觉。
+- 信道语音、DTMF、1750 Hz 单音：**不变**（DTMF 与 1750 仍走菜单值/满幅，不参与本条）。
+- 模拟/数字收发音量与改动前一致。
+
+### 10.4 风险与退路
+
+- 1/64 幅度（-12 dB）在嘈杂环境可能偏轻。要再调只改 `board_dm36.h` 的
+  `BOARD_PROMPT_DIVIDER_MIN`（7 = -15 dB，5 = -9 dB），不要动 `note()` 的算法。
+- 若日后确认旋钮在硬件上能到提示音通路（换板/改线），再把 V8 的设计捡回来；届时仍要保留
+  "DTMF/1750 不缩放"这一条。

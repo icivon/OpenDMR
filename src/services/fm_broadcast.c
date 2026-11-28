@@ -42,6 +42,7 @@
 #include "fm_broadcast.h"
 
 // Registers
+#define REG_CHIPID  0x00 // read: 0x58xx on an RDA5807 (0 when nothing answers on the bus)
 #define REG_CTRL    0x02
 #define REG_CHANNEL 0x03
 #define REG_VOLUME  0x05
@@ -283,6 +284,13 @@ void fm_broadcast_mute(bool mute)
 
 bool fm_broadcast_start(uint16_t start_frequency)
 {
+    uint16_t id;
+
+    // The bus held low answers every write with a false ACK (the DM-36's SDA, docs/dm36-porting.md 4.1.1): a write
+    // that "succeeds" proves nothing. The chip id is the only tell - 0x58xx for an RDA5807, 0 for nothing answering.
+    if (!chip_read(REG_CHIPID, &id) || ((id & 0xFF00) != 0x5800)) {
+        return false;
+    }
     if (!chip_write(REG_CTRL, CTRL_SOFT_RESET)) {
         return false;
     }
