@@ -173,16 +173,26 @@ static volatile bool beep_path = false; // the audio switch to the baseband for 
 static volatile bool audio_sw_fm = false;
 static volatile bool audio_sw_broadcast = false;
 // The volume knob's level: the analog receive level (0x48) and, through modem_set_rx_volume(), the digital modes' PCM
-// scaling. The knob sets it, the mode-independent way.
+// scaling (a percentage, 0 - 100, on the DM-36; 0 - 15 elsewhere). The knob sets it, the mode-independent way.
 static uint8_t rx_vol_target;
 // Once the knob has reported its position the analog setup must not overwrite 0x48 with the factory value: that put
 // the volume back to the calibration (13) at every channel change (2026-11-28).
 static bool rx_vol_set;
 
+// The analog receive level (0x48) takes 0 - 15: the DM-36's percentage quantises to it, the PCM scaling keeps it
+static uint8_t analog_level(uint8_t level)
+{
+#if BOARD_VOLUME_POT
+    return (uint8_t)(((uint16_t)level * 15u + 50u) / 100u);
+#else
+    return level;
+#endif
+}
+
 static void apply_knob_volume(uint8_t level)
 {
     rx_vol_set = true;
-    trx_set_volume(level);
+    trx_set_volume(analog_level(level));
     modem_set_rx_volume(level);
 }
 
@@ -379,7 +389,11 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
         // FM set up (trxSetModeAndBandwidth()): the baseband, the FD6818 FM table and level, then the channel; AM and
         // SSB the same, then their demodulator
         modem_fm_receive(is_wide(), factory_cal_rx_dac_gain());
+#if BOARD_VOLUME_POT
+        trx_set_fm(rx_vol_set ? analog_level(rx_vol_target) : factory_cal_analog_rx_volume());
+#else
         trx_set_fm(rx_vol_set ? rx_vol_target : factory_cal_analog_rx_volume());
+#endif
         if (!is_fm()) {
             trx_set_demod(demod_of(rs.channel.mode));
         }
@@ -692,6 +706,11 @@ static bool pot_level_seen;
 
 uint8_t radio_analog_volume(void)
 {
+    return analog_level(rx_vol_target);
+}
+
+uint8_t radio_volume_percent(void)
+{
     return rx_vol_target;
 }
 
@@ -722,8 +741,13 @@ void radio_analog_volume_step(int steps)
 
     if (level < 0) {
         level = 0;
+#if BOARD_VOLUME_POT
+    } else if (level > 100) {
+        level = 100;
+#else
     } else if (level > 15) {
         level = 15;
+#endif
     }
     rx_vol_target = (uint8_t)level;
     apply_knob_volume(rx_vol_target);

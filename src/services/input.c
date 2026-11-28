@@ -59,6 +59,29 @@
 #include "boot_screen.h"
 
 #define INPUT_PERIOD_MS     10
+
+#if BOARD_VOLUME_POT
+// The median of three ADC reads: the wiper's hash reaches a dozen counts at the mechanical stops
+static uint16_t median3(uint16_t a, uint16_t b, uint16_t c)
+{
+    if (a > b) {
+        uint16_t t = a;
+        a = b;
+        b = t;
+    }
+    if (b > c) {
+        uint16_t t = b;
+        b = c;
+        c = t;
+    }
+    if (a > b) {
+        uint16_t t = a;
+        a = b;
+        b = t;
+    }
+    return b;
+}
+#endif
 #define INPUT_TASK_PRIORITY 3
 #define DEFAULT_LONG_MS     400 // settings 4 x 100 ms
 #define DEFAULT_REPEAT_MS   200
@@ -163,7 +186,7 @@ static void input_task(void *arg)
         // The power / volume potentiometer (ADC channel 0): 0 - 690 raw over the knob's travel. Show the new level in
         // a notice, as the stock firmware does; the position at power on is applied too, but without a notice.
         {
-            uint16_t raw = adc_read_volume();
+            uint16_t raw = median3(adc_read_volume(), adc_read_volume(), adc_read_volume());
             // At power on the ADC needs a moment to settle. Until the first two readings agree, keep re-reading: the
             // knob's position at boot sets the volume (the radio was booting on a stale, usually zero, level).
             if (!pot_stable) {
@@ -178,19 +201,32 @@ static void input_task(void *arg)
                 }
             }
             // The potentiometer's full travel remeasured 0 - 690 (2026-11-28, min held at both ends); 632 and 251
-            // were partial turns. 345 is half of 690, for rounding to the nearest of the 16 levels.
-            uint32_t level = (((uint32_t)raw * 15u) + 345u) / 690u;
+            // were partial turns. 345 is half of 690, for rounding to the nearest of the 100 percentages.
+            uint32_t level = (((uint32_t)raw * 100u) + 345u) / 690u; // a percentage: 1 % steps
 
-            if (level > 15) {
-                level = 15;
+            if (level > 100) {
+                level = 100;
             }
-            if (radio_volume_from_pot((uint8_t)level)) {
+            // A level has to hold for three ticks (30 ms) before it is taken: at a boundary the wiper's hash made the
+            // level flip between two percentages while the knob stood still (99 % and 100 % were the worst, their
+            // boundary being one count wide)
+            static uint8_t pot_pending;
+            static uint8_t pot_agree;
+
+            if ((uint8_t)level != pot_pending) {
+                pot_pending = (uint8_t)level;
+                pot_agree = 0;
+            } else if (pot_agree < 3) {
+                pot_agree++;
+            }
+            if ((pot_agree >= 3) && radio_volume_from_pot((uint8_t)level)) {
                 char text[12];
 
-                snprintf(text, sizeof(text), "%u/15", (unsigned)radio_analog_volume());
-                // The boot splash must not be covered by a volume bubble: it comes up before the standby screen
+                snprintf(text, sizeof(text), "%u%%", (unsigned)radio_volume_percent());
+                // The boot splash must not be covered by a volume bubble: it comes up before the standby screen.
+                // UI_NOTICE_VOLUME draws a speaker and the percentage alone (line1 is not shown)
                 if (ui_top_screen() != &boot_screen) {
-                    ui_notify_text(TEXT_VOLUME, text, UI_NOTICE_INFO, 2500);
+                    ui_notify_text(TEXT_VOLUME, text, UI_NOTICE_VOLUME, 2500);
                 }
                 display_light_key(false); // turning the volume knob wakes the screen, as a key does
             }

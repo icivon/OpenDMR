@@ -41,6 +41,7 @@
 #include "draw.h"
 #include "fonts.h"
 #include "ui.h"
+#include "board.h"
 
 #define WIDTH_MIN   150
 #define WIDTH_MAX   (FB_WIDTH - 12)
@@ -94,6 +95,24 @@ static void wave(int32_t cx, int32_t cy, int32_t r, uint16_t c)
     }
 }
 
+#if BOARD_VOLUME_POT
+// The right half of a ring round (cx, cy), 3 pixels wide: the waves of the volume notice's speaker
+static void arc_right(int32_t cx, int32_t cy, int32_t r, theme_colour_t colour)
+{
+    uint16_t c = theme_colour(colour);
+
+    for (int32_t y = -r; y <= r; y++) {
+        for (int32_t x = 1; x <= r; x++) {
+            int32_t d2 = (x * x) + (y * y);
+
+            if ((d2 >= ((r - 1) * (r - 1))) && (d2 <= ((r + 1) * (r + 1)))) {
+                fb_fill(cx + x - 1, cy + y, cx + x + 1, cy + y + 1, c);
+            }
+        }
+    }
+}
+#endif
+
 // The kind's icon, centred on (cx, cy), about 30 pixels high, its lines 4 pixels wide
 static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t colour)
 {
@@ -127,6 +146,18 @@ static void icon(ui_notice_kind_t kind, int32_t cx, int32_t cy, theme_colour_t c
             wide_line(cx, cy + 3, cx + 14, cy - 9, colour);
             break;
         }
+#if BOARD_VOLUME_POT
+        case UI_NOTICE_VOLUME: { // a speaker with two waves: the volume knob's level
+            uint16_t c = theme_colour(colour);
+
+            fb_fill(cx - 12, cy - 5, cx - 8, cy + 5, c); // the cone's mouth
+            fb_fill(cx - 8, cy - 8, cx - 4, cy + 8, c);  // its flare
+            fb_fill(cx - 4, cy - 12, cx, cy + 12, c);    // and its far side
+            arc_right(cx, cy, 7, colour);
+            arc_right(cx, cy, 12, colour);
+            break;
+        }
+#endif
         default: // an i in a ring (UI_NOTICE_INFO, UI_NOTICE_LOCK)
             draw_ring(cx, cy, 4 * 13, 4 * 3, colour);
             draw_fill_circle(cx, cy - 6, 4 * 2, colour);
@@ -149,11 +180,18 @@ void ui_notice_draw(text_id_t line1, text_id_t line2, const char *line2_text, ui
 
     // one line ("APRS Sent"); two when that is too wide
     if (t2) {
-        snprintf(joined, sizeof(joined), "%s %s", t1, t2);
-        if (font_text_width(font, joined) <= (WIDTH_MAX - (2 * PADDING_X))) {
-            lines[0] = joined;
-        } else {
-            lines[1] = t2;
+#if BOARD_VOLUME_POT
+        if (kind == UI_NOTICE_VOLUME) {
+            lines[0] = t2; // the speaker icon says what it is: the percentage alone
+        } else
+#endif
+        {
+            snprintf(joined, sizeof(joined), "%s %s", t1, t2);
+            if (font_text_width(font, joined) <= (WIDTH_MAX - (2 * PADDING_X))) {
+                lines[0] = joined;
+            } else {
+                lines[1] = t2;
+            }
         }
     }
     widest = font_text_width(font, lines[0]);

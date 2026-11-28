@@ -201,7 +201,11 @@ uint8_t modem_rx_volume(void)
 
 void modem_set_rx_volume(uint8_t level)
 {
+#if BOARD_VOLUME_POT
+    rx_volume_level = (uint8_t)(level > 100 ? 100 : level); // the DM-36's level is a percentage
+#else
     rx_volume_level = (uint8_t)(level > 15 ? 15 : level);
+#endif
 }
 
 void modem_fm_receive(bool wide, uint8_t dac_gain)

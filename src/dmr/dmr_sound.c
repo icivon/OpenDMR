@@ -189,13 +189,15 @@ static bool RAM_CODE refill(void)
             sample = (sample * agc_gain) / AGC_GAIN_ONE;
         }
         // The volume knob, applied to the decoded PCM as well: the DAC gain alone was not enough on this board, the
-        // digital modes stayed loud with the knob at minimum (2026-11-28). Level 6 is unity; above it there is no
-        // further boost - that was clipping into a loud crackle (2026-11-28)
+        // digital modes stayed loud with the knob at minimum (2026-11-28). 100 % is unity (1 % steps)
         {
             uint8_t vol = modem_rx_volume();
 
-            
+#if BOARD_VOLUME_POT
+            sample = (sample * (int32_t)vol) / 100; // the DM-36's level is a percentage (1 % steps)
+#else
             sample = (sample * (int32_t)vol) / 15;
+#endif
         }
 
         sample = (sample > 32767) ? 32767 : ((sample < -32768) ? -32768 : sample);

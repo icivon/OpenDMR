@@ -190,7 +190,11 @@ static void write_block(bool play)
     uint8_t vol = modem_rx_volume();
 
     for (int i = 0; i < BLOCK; i++) {
+#if BOARD_VOLUME_POT
+        int32_t v = (voice ? (x[i] * vol) / 100 : 0) + (b ? bx[i] : 0); // the DM-36's level is a percentage
+#else
         int32_t v = (voice ? (x[i] * vol) / 15 : 0) + (b ? bx[i] : 0);
+#endif
         int16_t s = (int16_t)((v > 32767) ? 32767 : (v < -32768) ? -32768 : v);
         block[2 * i] = (uint8_t)s; // low byte first
         block[2 * i + 1] = (uint8_t)((uint16_t)s >> 8);

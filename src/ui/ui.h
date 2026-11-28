@@ -160,6 +160,7 @@ typedef enum {
     UI_NOTICE_MAIL,  // an envelope: a message came
     UI_NOTICE_LOCK,  // an i in a ring, as UI_NOTICE_INFO: the keypad locked (lock_screen.c)
     UI_NOTICE_UNLOCK, // a tick: unlocked
+    UI_NOTICE_VOLUME, // a speaker: the volume knob's level (the DM-36's potentiometer; the DM-32 has a plain one)
 } ui_notice_kind_t;
 
 #define UI_NOTICE_MS_MAX 25500 // the longest (100 ms steps in the event)

@@ -127,10 +127,12 @@ void radio_set_scanning(bool on); // scanning: no receive beeps, no beacons or b
 // A radio whose knob is the volume (BOARD_KNOB_VOLUME): the analog receive level, 0 - 15, by that many steps, applied
 // at once while receiving
 void radio_analog_volume_step(int steps);
-// A board with a volume potentiometer (BOARD_VOLUME_POT): a new 0 - 15 level from it, true when it changed. The first
-// call only records the knob's position, so the radio boots on the board's default (6) until the knob is turned.
+// A board with a volume potentiometer (BOARD_VOLUME_POT): a new level from it (0 - 100, a percentage, on the DM-36),
+// true when it changed. The first call only records the knob's position, so the radio boots on the board's default
+// (6) until the knob is turned.
 bool radio_volume_from_pot(uint8_t level);
 uint8_t radio_analog_volume(void);               // the level actually in use (show it, not the pot's raw reading)
+uint8_t radio_volume_percent(void);              // the same level as 0 - 100 (the DM-36's screen shows it)
 bool radio_is_scanning(void);
 // Scanning a digital channel: the strongest reading since the last retune settled, and how many (0: none yet)
 uint8_t radio_scan_peak(uint16_t *samples);
