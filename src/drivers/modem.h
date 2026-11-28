@@ -47,6 +47,8 @@ void modem_set_mod_scale(uint32_t scale);
 void modem_fm_receive(bool wide, uint8_t dac_gain); // dac_gain: GCR_DACL (factory_cal_rx_dac_gain())
 void modem_fm_transmit(bool wide, uint8_t mic_gain); // mic_gain: GCR_ADCL (settings.mic_gain_fm)
 void modem_fm_audio(bool on);                        // the received audio through to the DAC
+uint8_t modem_rx_volume(void);                       // the level the DMR engine must keep when it resets its gain
+void modem_set_rx_volume(uint8_t level);             // the knob's level (the squelch's fade-in does not change it)
 
 #define MODEM_BEEP_BLOCK 32 // bytes: 16 samples
 void modem_beep(bool on);                            // the prompt path to the DAC (the FM audio path off meanwhile)

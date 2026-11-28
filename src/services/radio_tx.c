@@ -128,7 +128,14 @@ void transmit_on(void)
     trx_transmit_prepare();
     trx_set_mic_gain(settings.mic_gain_fm); // the FM mic goes to the FD6818 (the codec gain is the DMR one)
     modem_fm_transmit(wide, settings.mic_gain_fm);
+#if BOARD_MIC_SAME_LEVEL_FOR_ANALOG
+    // This board's microphone selector does not separate the chips: the level the digital modes transmit from (voice
+    // proved with DMR) is the one that reaches a working microphone, and with the analog level the FM modulator picked
+    // up the breath alone (2026-11-28)
+    gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_MODEM);
+#else
     gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_FD6818); // the mic to the FD6818 (the board may invert it, hw.h)
+#endif
     trx_transmit(wide);
     gpio_output((tx >= UHF_FROM) ? PIN_PA_UHF : PIN_PA_VHF, true);
     modem_pa_drive(pa_drive(tx));

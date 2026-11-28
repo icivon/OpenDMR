@@ -44,6 +44,7 @@
 #include "hal.h"
 #include "settings.h"
 #include "dmr_compat.h"
+#include "modem.h"
 #include "p25_phy.h"
 #include "p25_radio.h"
 
@@ -186,8 +187,18 @@ static bool RAM_CODE refill(void)
         }
         if (agc != 0) {
             sample = (sample * agc_gain) / AGC_GAIN_ONE;
-            sample = (sample > 32767) ? 32767 : ((sample < -32768) ? -32768 : sample);
         }
+        // The volume knob, applied to the decoded PCM as well: the DAC gain alone was not enough on this board, the
+        // digital modes stayed loud with the knob at minimum (2026-11-28). Level 6 is unity; above it there is no
+        // further boost - that was clipping into a loud crackle (2026-11-28)
+        {
+            uint8_t vol = modem_rx_volume();
+
+            
+            sample = (sample * (int32_t)vol) / 15;
+        }
+
+        sample = (sample > 32767) ? 32767 : ((sample < -32768) ? -32768 : sample);
         *(SOUNDBUFRX + i) = (uint8_t)sample;
         *(SOUNDBUFRX + i + 1) = (uint8_t)((uint16_t)sample >> 8);
     }

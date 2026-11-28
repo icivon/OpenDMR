@@ -81,7 +81,7 @@
 static bool id_read;           // fd68xx_read_id() reset the chip and read its ID
 static uint16_t chip_id;
 #define AF_ENABLE 0x0002 // REG_AF bit 1: the audio output on (the mute value has it clear on the FD6818B)
-static uint16_t af_on = AF_MUTED | AF_ENABLE | (AF_FM << 8); // DM-32: 0x6142, DM-36: 0x6042
+static uint16_t af_on = BOARD_AF_FM_WORD; // DM-32: 0x6142, DM-36: 0x6943 (BOARD_AF_FM_WORD)
 static uint16_t if_default;    // 0x3D and 0x2F as the chip starts (fd68xx_note_defaults()), for FM
 static uint16_t reg_2f_default;
 
@@ -170,7 +170,10 @@ void fd68xx_set_demod(trx_demod_t new_demod)
 {
     bool am = (new_demod == TRX_DEMOD_AM);
 
-    af_on = (uint16_t)(AF_MUTED | AF_ENABLE | ((am ? AF_AM : ((new_demod == TRX_DEMOD_SSB) ? AF_SSB : AF_FM)) << 8));
+    // A board that names its own word (BOARD_AF_FM_WORD) keeps it in every analog mode: the DM-36 takes the flat
+    // discriminator through the modem, where the source field of the FD6818's own audio out means nothing.
+    af_on = BOARD_AF_FM_WORD;
+    (void)am;
     trx_spi_write(REG_AF, AF_MUTED);
     trx_spi_write(REG_IF, (new_demod == TRX_DEMOD_SSB) ? 0 : if_default);
     // The AFC off in every mode, as the FD6818 manual says with a TCXO ("AFC 设置"; the radio's is calibrated). On, with

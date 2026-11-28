@@ -338,7 +338,7 @@ void radio_init(void)
     rs.tx[RFSM_TX_KIND_VOICE] = tx_backend_of(NULL, false);
     rs.tx[RFSM_TX_KIND_BEACON] = tx_backend_beacon();
     rs.tx[RFSM_TX_KIND_DATA] = tx_backend_data();
-    gpio_output(PIN_AUDIO_SW, false);
+    gpio_output(PIN_AUDIO_SW, PIN_AUDIO_SW_FD6818(false)); // the baseband, until a channel puts the speaker somewhere
     gpio_output(PIN_AUDIO_AMP, false);
     gpio_output(PIN_PA_VHF, false);
     gpio_output(PIN_PA_UHF, false);

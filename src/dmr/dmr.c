@@ -39,6 +39,7 @@
 #include "hw.h"
 #include "hal.h"
 #include "factory_cal.h"
+#include "modem.h"
 #include "last_heard.h"
 #include "dmr_ids.h"
 #include "ui.h"
@@ -166,7 +167,7 @@ void dmr_enter(const codeplug_channel_t *channel)
 {
     dmr_compat_set_channel(channel);
     HRC7000SetDMRModemCalibration();
-    *GCR_DACL = factory_cal_rx_dac_gain();
+    *GCR_DACL = factory_cal_rx_dac_gain(); // the factory gain; the knob scales the decoded PCM instead
     dmr_channel(channel);
 }
 

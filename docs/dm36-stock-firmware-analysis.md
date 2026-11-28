@@ -346,3 +346,83 @@ VMA 0x30b1068: 00 30 6e 00 ff ff ff 00
 - 蓝牙模块电源/复位脚：原厂 `0x30619ec` 附近出现立即数 `175<<1` 和 `48`，但原厂 GPIO API 编码与 OpenDMR pin 编号不同，不能静态映射到 `board_dm36.h`。
 - CPS 机型码：见 9.2。
 
+### 9.6 蓝牙链路深度逆向（2026-11-28）
+
+对 `stock.bin` / `s3.asm` 做了系统性逆向，纠正了此前多处误判。以下地址均为文件偏移（= 反汇编地址，运行 VMA 加 0x03000000）。
+
+#### 9.6.1 原厂 UART2 初始化：`0x1c968`
+
+开机流程 `0x5fff2` 在硬件标志 `0x3fa24` 的 bit3 置位时，以 `r0=115200` 调用 `0x1c968`。完整序列：
+
+```
+0x11000034 &= 0xFFFE1FFF        IO_DIPLEX0：清 bit13-15（引脚复用）
+REG(0x17000078) = (v & ~0xFF00) | 0x2100    PIC：路由 UART2 中断
+LCR |= 0x80; DLL = (clock_apb>>4)/115200; DLH = 高字节; LCR &= ~0x80
+IER = 0
+LCR = 0x03                      8N1
+FCR = 0x67                      FIFO 使能 + 复位 RX/TX
+IER = 5                         RX 数据可用 + RX 线路状态中断
+irq_register(0x2cdcc, 45)       注册 UART2 的 IRQ45 中断服务程序
+```
+
+发送函数 `0x61a2c`：轮询 `USR(0x1409007c) & 2`，写 `THR(0x14090000)` —— 与 OpenDMR `uart2_write()` 完全一致，证实基址 `0x14090000` 正确。
+
+接收函数 `0xe088c`：轮询 `LSR(0x14090014) & 1`，读 `RBR(0x14090000)`，字节存入 `0x3fca0` 缓冲区（长度 `0x4010a`），帧首必须是 `+` 或 `O`。——与 OpenDMR `uart2_read()` 一致。
+
+#### 9.6.2 关键纠正：`0x6f344(handler, irq)` 是中断注册，不是 GPIO/时钟配置
+
+此前把 `0x1c968` 最后的 `0x6f344(0x2cdcc, 45)` 误判为 GPIO 配置表。证据链：
+
+- `0x6f30c`：`vector[irq-32] = handler`，向量表基址 `0x45a70`；
+- `0xc4136` 中断分发器：`mfcr cr<0,0>` 取中断号，从 `0x45a70` 取函数指针 `jsr`；
+- 其他调用都是成对模式：`0x6f344(0x2cd68, 44)`=UART1、`(0x2c588,60)`、`(0x2c580,59)`、`(0x2c538,61)` 等；
+- `0x2cdcc` 是 ISR 代码地址，不是数据。
+
+结论：原厂 UART2 用**中断接收**（IER=5 + IRQ45 ISR），OpenDMR 用轮询（IER=0）。这是一处设计差异，但试过 IER=5 后 loopback 仍不通，故不是硬件不工作的根因。
+
+#### 9.6.3 蓝牙 GPIO 初始化：`0x619ec`（此前判断有误）
+
+开机 `0x60150` 调用。受状态位 `0x40125 & 0x20` 控制：
+
+```
+if (0x40125 & 0x20) {
+    gpio_api(175<<1 = 350)      // 库函数 0xfd02e324，非 OpenDMR 的 gpio_output
+    gpio_api(48)                // 库函数 0xfd02c5e4
+}
+0xf900(4, 194<<3 = 1552, 0x400cc, 40)    // 互斥保护的 GPIO 配置
+0x400db = 0; 0x400f3 = 0
+```
+
+此前的 `0x6e324`/`0x6c664` 地址换算有误；这两个调用走的是原厂 GPIO 库（参数 350/48 是库内部编号，不是 OpenDMR 的全局 pin 号），不能直接照搬。
+
+#### 9.6.4 蓝牙任务与 AT 协议全貌
+
+- 硬件存在标志：`0x3fa24 & 8`；所有蓝牙初始化都受此位控制。
+- AT 命令字符串表：`0xba948`–`0x0bab88`，共 27 条，包括
+  `AT+VER?` / `AT+LENAME?` / `AT+PIN?` / `AT+DNAME?` / `AT+AUTOCONN?` / `AT+AGHF?` /
+  `AT+MICGAIN=15` / `AT+SPKGAIN=25` / `AT+MICEN=0/1` / `AT+SPKEN=0/1` / `AT+AUDIO=0/1` /
+  `AT+SCAN=1/2` / `AT+LESCAN=1/2` / `AT+CONN=` / `AT+DISC=` / `AT+DATA=00,` / `AT+ADATA=01,`
+  响应：`READY` / `CONN` / `DISC` / `SCAN:xx` / `HOSTDEVICE` / `PTTKEY` / `PTTBATT` / `HFREQ` /
+  `VER:` / `LENAME:` / `PIN:` / `+DATA:00` / `+ADATA:00` / `ADATA` / `DATA`。
+- UI 字符串：`LytLink` / `Bluetooth` / `BT On/Off` / `BT Pairing` / `BT Names` / `BT SPK Gain` /
+  `BT Mic Gain` / `BT Pin Code` / `BT PTT Pair` / `LytLink Ver:` / `LytLink Not Open!` /
+  `BT connected!` / `BT disconnected!`。整机版本 `DM36.NRFB.01.026`（2022-06-27）。
+- 解析主函数 `0x61ba4`：以 RX 缓冲首字节 `+` 为帧起始，逐条 strcmp 匹配响应，置状态位。
+- 命令构造 `0x61a88`、发送 `0x62510`、开机首批 `0x625a0`。
+- 模块版本缓存：原厂在 `0x61bf8` 从响应解析，OpenDMR 已对应实现 `module_version` / `last_event`。
+
+#### 9.6.5 OpenDMR 实测对照（2026-11-28）
+
+- UART2 寄存器**可读写**：按正确顺序（LCR bit7 → DLL/DLH → LCR=3）后 `DLL=0x2D`(45)、`IER=0x5` 均可读回。此前"DLL 读回 0"是写序错误的误判。
+- **内部 loopback 失败**：`MCR bit4=1`（TX 内部回 RX），发 `0x55` 后 `LSR=0x60`、`RXRDY` 恒 0；FCR 用 `0x07/0x67/0xC7/0x00` 均无效；用固件 `uart2_write()` 发也一样。
+  → UART2 的移位寄存器/波特率发生器不工作，不是引脚、波特率、IER 或轮询方式的问题。
+- 时钟/外设寄存器对照：`0x11000030=2`（与原厂一致）、`0x160000d2=0x5A`（原厂 `|=3`，实测置位到 `0x5B` 后 loopback 仍失败）、`CLK_MGR0x2c=0x00FF07FF`（试过 `0xFFF0FF3C` / `0xFFFFFFFF` 均无效）。
+- GPIO 软件扫描：在固件 RAM 中高速采样全部 GPIO_EXT，`bt_gpio_scan()` 未发现任何与 UART 发送相关的翻转脚（GPIOC pin83 为空闲时也翻转的干扰）。
+
+**最终验证**：完整复现原厂 `0x1c968` 全部序列（IO_DIPLEX0 清 bit13-15 + PIC `0x17000078=...0x2100` + 正确 DLL/DLH + FCR=0x67 + IER=5）后，内部 loopback 仍为 `LSR=0x60`。**排除全部软件配置差异**。
+
+**结论**：OpenDMR 的 UART2 软件实现与原厂逐字节一致，基址、波特率、IER、收发函数、引脚复用、PIC 配置都正确；但 UART2 硬件逻辑在此环境下不工作（内部 loopback 失败）。软件层面已无法解释，需实机量 UART2 引脚/模块供电才能继续。
+
+#### 9.6.6 遗留诊断代码
+
+`src/board/dm36/uart2_dm36.c` 中保留了本轮分析用的 `bt_gpio_scan()` / `bt_uart2_dump()` 及全局数组 `bt_scan_toggles[]` / `bt_uart2_regs[]`。确认诊断完成后应删除，避免进入正式固件。

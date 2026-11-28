@@ -145,11 +145,33 @@
 #define PIN_AUDIO_AMP_LEVEL(on) ((bool)((on) != (BOARD_AUDIO_AMP_INVERTED != 0)))
 
 // The audio switch (PIN_AUDIO_SW): the DM-32 takes the speaker straight from the FD6818 in FM (high) and through the
-// baseband otherwise (low). The DM-36 stock firmware keeps the pad low in every mode (its GPIO init, 0x03001C4F) and
-// selects the source with the FD6818's own audio registers instead; driven high there the speaker sat on the wrong
-// input - the loud noise in standby that no AF mute stopped.
+// baseband otherwise (low). A board whose switch is wired the other way round sets BOARD_AUDIO_SW_INVERTED: the pad is
+// then low for the FD6818's AF output (FM, the broadcast receiver's external audio node) and high for the baseband (the
+// digital modes' PCM and the beeps). PIN_AUDIO_SW_FD6818(on): the level for "the speaker on the FD6818".
+#ifndef BOARD_AUDIO_SW_INVERTED
+#define BOARD_AUDIO_SW_INVERTED 0
+#endif
 #ifndef BOARD_AUDIO_SW_FM_HIGH
 #define BOARD_AUDIO_SW_FM_HIGH 1
+#endif
+#define PIN_AUDIO_SW_FD6818(on) ((bool)((BOARD_AUDIO_SW_INVERTED != 0) ? !(on) : ((on) && BOARD_AUDIO_SW_FM_HIGH)))
+// A board whose microphone selector does not separate the transceiver chip from the modem: the analog modes drive the
+// same level as the digital ones (not PIN_MIC_MUT_TO_FD6818)
+#ifndef BOARD_MIC_SAME_LEVEL_FOR_ANALOG
+#define BOARD_MIC_SAME_LEVEL_FOR_ANALOG 0
+#endif
+// The analog receive level (0x48, 0 - 15) where the factory calibration is not the wanted one; 0: the calibration's
+#ifndef BOARD_ANALOG_RX_VOLUME
+#define BOARD_ANALOG_RX_VOLUME 0
+#endif
+// A radio with no volume potentiometer, its knob being the volume (the stock firmware's way): the channel screen's
+// rotary then moves the analog receive level instead of the channel
+#ifndef BOARD_KNOB_VOLUME
+#define BOARD_KNOB_VOLUME 0
+#endif
+// A radio with its own volume potentiometer on ADC channel 0, separate from the channel knob
+#ifndef BOARD_VOLUME_POT
+#define BOARD_VOLUME_POT 0
 #endif
 #define PIN_LCD_NRESET  BOARD_PIN_LCD_NRESET
 #define PIN_LCD_RD      BOARD_PIN_LCD_RD

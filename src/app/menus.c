@@ -351,7 +351,7 @@ static const ui_item_t main_menu_items[] = {
     {TEXT_GPS, ICONS_LOCATION, UI_ITEM_SCREEN, &gps_screen, NULL},
     {TEXT_SCAN_LOCKOUTS, ICONS_SCAN, UI_ITEM_SCREEN, &pick_list_screen, (void *)&lockouts_list},
 #if defined(BOARD_DM36)
-    {BT_TEXT_MENU, ICONS_COUNT, UI_ITEM_SCREEN, &bluetooth_menu_screen, NULL},
+    {BT_TEXT_MENU, ICONS_BLUETOOTH, UI_ITEM_SCREEN, &bluetooth_menu_screen, NULL},
 #endif
 };
 

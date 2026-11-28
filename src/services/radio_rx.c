@@ -89,6 +89,7 @@ static volatile uint8_t noise_raw = 255;
 static uint8_t samples[SIGNAL_SAMPLES];
 static uint8_t sample_index = 0;
 static volatile uint8_t signal_shown = 0;
+static TickType_t last_signal_post; // the UI's redraw of the meter is rate-limited
 
 /* Channel facts */
 
@@ -171,10 +172,25 @@ void lna(bool on, uint32_t frequency)
 static volatile bool beep_path = false; // the audio switch to the baseband for a beep
 static volatile bool audio_sw_fm = false;
 static volatile bool audio_sw_broadcast = false;
+// The volume knob's level: the analog receive level (0x48) and, through modem_set_rx_volume(), the digital modes' PCM
+// scaling. The knob sets it, the mode-independent way.
+static uint8_t rx_vol_target;
+// Once the knob has reported its position the analog setup must not overwrite 0x48 with the factory value: that put
+// the volume back to the calibration (13) at every channel change (2026-11-28).
+static bool rx_vol_set;
+
+static void apply_knob_volume(uint8_t level)
+{
+    rx_vol_set = true;
+    trx_set_volume(level);
+    modem_set_rx_volume(level);
+}
 
 static void audio_switch(void)
 {
-    gpio_output(PIN_AUDIO_SW, BOARD_AUDIO_SW_FM_HIGH && (audio_sw_fm || audio_sw_broadcast) && !beep_path);
+    bool fd6818 = (audio_sw_fm || audio_sw_broadcast) && !beep_path; // the speaker on the FD6818's AF output
+
+    gpio_output(PIN_AUDIO_SW, PIN_AUDIO_SW_FD6818(fd6818));
 }
 
 static void RAM_CODE audio_amp(bool on)
@@ -206,6 +222,15 @@ void squelch_close(void)
     }
     css_missing = 0;
     signal_low = 0;
+}
+
+// The speaker off for a transmission started by the DMR engine (radio_dmr_tx_on()): that path never went through
+// squelch_close(), so an amplifier left on by the call before stayed on - the transmit bursts came out of the radio's
+// own speaker as a loud noise while the other end received the voice fine
+void radio_tx_audio_off(void)
+{
+    audio_amp(false);
+    modem_fm_audio(false);
 }
 
 // The squelch may open from ms on (the FD6818's noise reading is low a moment after it is set up)
@@ -328,10 +353,14 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
     // The mic to the FD6818 for FM (high), to the modem's codec for DMR (low), set with the mode as the stock firmware
     // does: switched at each DMR transmission, it put a DC step and a click (to -32000) into the first 100 ms of the
     // capture, sent as a pop at the start of every transmission
-    // Receiving: the mic parked on the FD6818 whatever the mode. Left on the modem's codec the capture (AUDIO_CONTROL
-    // bit 4, still set from the last transmission) put the room into the receive path: a loud noise in standby and on
-    // every channel change, and nothing but noise under a signal (the FD6818's AF itself is muted there)
-    gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_FD6818);
+    // The mic as the mode needs it, receive and transmit alike: switched at each PTT it put a DC step (to -32000) into
+    // the first 100 ms of the capture, heard as a pop when the key went down. Parked on the FD6818 it was no help
+    // against the standby noise after all - that was the FM audio path (AUDIO_CONTROL bit 6, see tune_channel())
+#if BOARD_MIC_SAME_LEVEL_FOR_ANALOG
+    gpio_output(PIN_MIC_MUT, PIN_MIC_MUT_TO_MODEM);
+#else
+    gpio_output(PIN_MIC_MUT, is_analog() ? PIN_MIC_MUT_TO_FD6818 : PIN_MIC_MUT_TO_MODEM);
+#endif
     memset(samples, 0, sizeof(samples));
     signal_shown = 0;
     if (rs.dmr_running && (!rs.has_channel || is_analog())) {
@@ -350,7 +379,7 @@ void tune_channel(const codeplug_channel_t *next, bool valid)
         // FM set up (trxSetModeAndBandwidth()): the baseband, the FD6818 FM table and level, then the channel; AM and
         // SSB the same, then their demodulator
         modem_fm_receive(is_wide(), factory_cal_rx_dac_gain());
-        trx_set_fm(factory_cal_analog_rx_volume());
+        trx_set_fm(rx_vol_set ? rx_vol_target : factory_cal_analog_rx_volume());
         if (!is_fm()) {
             trx_set_demod(demod_of(rs.channel.mode));
         }
@@ -423,8 +452,22 @@ static void RAM_CODE add_sample(uint8_t signal)
     int32_t moved = average - signal_shown;
 
     if ((moved >= SIGNAL_MOVE) || (moved <= -SIGNAL_MOVE)) {
+        // Notify the UI only when the displayed, 3 dB-quantised reading changed: posting on every small reading moved
+        // the meter and redrew the receive screen constantly (2026-11-28)
+        int shown_before = radio_signal_dbm();
+
         signal_shown = (uint8_t)average;
-        post_signal();
+        // The digital receivers do not post a signal when a call comes in: without this the screen stayed dark with
+        // the volume at 0, though the signal was there. Rate-limited, and analog modes excluded - there these events
+        // were what made the receive screen flicker (2026-11-28)
+        if (!is_analog() && (radio_signal_dbm() != shown_before)) {
+            TickType_t now = xTaskGetTickCount();
+
+            if ((now - last_signal_post) >= pdMS_TO_TICKS(400)) {
+                last_signal_post = now;
+                post_signal();
+            }
+        }
     }
 }
 
@@ -643,6 +686,49 @@ void RAM_CODE squelch_check(void)
 
 // Scanning a digital channel: a DMR transmission without a repeater is on the air 27.5 ms of every 60, so a step of
 // 50 ms sees it only with readings every few ms (SAMPLE_MS would give one or two, maybe in the gap)
+#if BOARD_VOLUME_POT
+static uint8_t pot_level;  // the last level taken from the potentiometer
+static bool pot_level_seen;
+
+uint8_t radio_analog_volume(void)
+{
+    return rx_vol_target;
+}
+
+bool radio_volume_from_pot(uint8_t level)
+{
+    // The knob's position at power on sets the volume; on a change apply it at once. The first reading is used but not
+    // reported, so the boot screen stays clear of a volume bubble.
+    if (!pot_level_seen) {
+        pot_level_seen = true;
+        pot_level = level;
+        rx_vol_target = level;
+        apply_knob_volume(level);
+        return false;
+    }
+    if (level == pot_level) {
+        return false;
+    }
+    pot_level = level;
+    rx_vol_target = level;
+    apply_knob_volume(level);
+    return true;
+}
+#endif
+
+void radio_analog_volume_step(int steps)
+{
+    int level = (int)rx_vol_target + steps;
+
+    if (level < 0) {
+        level = 0;
+    } else if (level > 15) {
+        level = 15;
+    }
+    rx_vol_target = (uint8_t)level;
+    apply_knob_volume(rx_vol_target);
+}
+
 bool scan_sampling(void)
 {
     return rs.is_scanning && rs.dmr_running && !rs.is_transmitting && !eco_rx_off();
@@ -752,7 +838,18 @@ uint8_t radio_signal(void)
 
 int radio_signal_dbm(void)
 {
-    return (int)signal_shown - ((rs.channel.rx_freq >= UHF_FROM) ? 167 : 177);
+    // Nothing received, nothing shown: the standby noise read as S1 / S2, and its jitter flickered the meter. And on a
+    // 3 dB grid, so a reading moving by a decibel or two no longer flips a bar back and forth (2026-11-28).
+    // The digital receivers run without a squelch: their carrier is digital_carrier, not rs.has_carrier. Gating on the
+    // latter alone left DMR / P25 / NXDN / M17 with no S-meter movement at all (2026-11-28)
+    if (!rs.has_carrier && !(digital_carrier && !is_analog())) {
+        return -140;
+    }
+
+    // DM-36's RSSI reads some 18 dB (3 S points) higher than the DM-32's at the same place and frequency (2026-11-28)
+    int dbm = (int)signal_shown - ((rs.channel.rx_freq >= UHF_FROM) ? 185 : 195);
+
+    return (dbm / 3) * 3;
 }
 
 uint8_t radio_signal_raw(void)

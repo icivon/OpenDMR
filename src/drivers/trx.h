@@ -67,6 +67,7 @@ void trx_idle(void);          // neither receive nor transmit (the audio muted)
 // Transmit (radioSetTx()), the frequency set before: the transmit settings, then (after the baseband) transmit on
 #define TRX_MIC_GAIN_MAX 31
 // FM: the mic sensitivity, 0 .. 31 (settings.mic_gain_fm, 26 the stock default)
+void trx_set_volume(uint8_t rx_volume); // the analog receive level (0x48), 0 - 15
 void trx_set_mic_gain(uint8_t gain);
 void trx_transmit_prepare(void);
 void trx_transmit(bool wide);

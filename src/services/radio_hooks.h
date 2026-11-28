@@ -39,6 +39,7 @@
 // The DMR engine (its task or its interrupts): its speaker; the transmitter on at the start, each burst on / off,
 // receiving at the end
 void radio_dmr_audio(bool on);
+void radio_tx_audio_off(void); // the speaker and the FM audio path off for a transmission
 void radio_dmr_tx_on(void);
 void radio_dmr_burst(bool on);
 void radio_dmr_rx_on(void);

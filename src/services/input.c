@@ -52,7 +52,11 @@
 #include "display.h"
 #include "aprs.h"
 #include "sms.h"
+#include <stdio.h>
 #include "input.h"
+#include "adc.h"
+#include "hw.h"
+#include "boot_screen.h"
 
 #define INPUT_PERIOD_MS     10
 #define INPUT_TASK_PRIORITY 3
@@ -148,12 +152,50 @@ static void input_task(void *arg)
     uint32_t last_minute = datetime_now() / 60;
     uint32_t last_data_check = 0;
     bool auto_off = false;
+    bool pot_stable = false;
     TickType_t wake = xTaskGetTickCount();
 
     (void)arg;
 
     for (;;) {
         uint32_t now = systime_get_ms();
+#if BOARD_VOLUME_POT
+        // The power / volume potentiometer (ADC channel 0): 0 - 690 raw over the knob's travel. Show the new level in
+        // a notice, as the stock firmware does; the position at power on is applied too, but without a notice.
+        {
+            uint16_t raw = adc_read_volume();
+            // At power on the ADC needs a moment to settle. Until the first two readings agree, keep re-reading: the
+            // knob's position at boot sets the volume (the radio was booting on a stale, usually zero, level).
+            if (!pot_stable) {
+                static uint16_t first_raw;
+
+                if (first_raw == raw) {
+                    pot_stable = true;
+                } else {
+                    first_raw = raw;
+                    vTaskDelay(pdMS_TO_TICKS(20));
+                    continue;
+                }
+            }
+            // The potentiometer's full travel remeasured 0 - 690 (2026-11-28, min held at both ends); 632 and 251
+            // were partial turns. 345 is half of 690, for rounding to the nearest of the 16 levels.
+            uint32_t level = (((uint32_t)raw * 15u) + 345u) / 690u;
+
+            if (level > 15) {
+                level = 15;
+            }
+            if (radio_volume_from_pot((uint8_t)level)) {
+                char text[12];
+
+                snprintf(text, sizeof(text), "%u/15", (unsigned)radio_analog_volume());
+                // The boot splash must not be covered by a volume bubble: it comes up before the standby screen
+                if (ui_top_screen() != &boot_screen) {
+                    ui_notify_text(TEXT_VOLUME, text, UI_NOTICE_INFO, 2500);
+                }
+                display_light_key(false); // turning the volume knob wakes the screen, as a key does
+            }
+        }
+#endif
         int32_t rotary = rotary_get_count();
 
         if (power_off_pending() || auto_off) {

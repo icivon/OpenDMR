@@ -85,6 +85,15 @@ static uint32_t RAM_CODE convert(int channel, volatile uint32_t *data)
     return value;
 }
 
+// The volume potentiometer: ADC channel 0 (the stock firmware's get_adc0() at 0x561f4). Measured on the DM-36: 0 at
+// the minimum, 690 at the full maximum (2026-11-28, remeasured with both ends held; 632 / 251 were partial turns), the
+// other channels being VOX (1) and the
+// battery (2).
+uint16_t adc_read_volume(void)
+{
+    return (uint16_t)(convert(0, &ADC_DATA_AB) & 0x3FF);
+}
+
 uint16_t RAM_CODE adc_read_battery(void)
 {
     return (uint16_t)(convert(CHANNEL_BATTERY, &ADC_DATA_CD) & 0x3FF);

@@ -61,6 +61,7 @@ typedef enum {
     ICONS_LOCK,          // padlock
     ICONS_MAIL,          // envelope
     ICONS_SQUELCH,       // signal bars under a threshold line (14 wide)
+    ICONS_BLUETOOTH,     // Bluetooth rune (DM-36 only menu)
     ICONS_COUNT
 } icons_id_t;
 

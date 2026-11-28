@@ -34,6 +34,7 @@
 void adc_init(void); // once, before any conversion (the stock firmware's set up)
 // One conversion (10 bits), a few microseconds: the battery (channel 2), the VOX (channel 1, the mic's level as the
 // stock firmware's VOX reads it, 0 when quiet)
+uint16_t adc_read_volume(void); // the volume potentiometer, ADC channel 0, raw 0 - 1023
 uint16_t adc_read_battery(void);
 uint16_t adc_read_vox(void);
 

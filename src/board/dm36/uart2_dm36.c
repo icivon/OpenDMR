@@ -33,6 +33,10 @@ void uart2_init(uint32_t baud)
 {
     uint32_t divisor = ((clock_apb_hz >> 4) / baud);
 
+    // The stock firmware's UART2 set-up (0x1c96a / 0x1c97c): route the UART2 pads before the registers.
+    IO_DIPLEX0 &= 0xFFFE1FFF;
+    REG(0x17000078) = (REG(0x17000078) & ~0xFF00u) | 0x2100u;
+
     UART_LCR(UART2_BASE) |= (1 << 7);
     UART_DLL(UART2_BASE) = divisor & 0xff;
     UART_DLH(UART2_BASE) = (divisor >> 8) & 0xff;

@@ -61,6 +61,12 @@
 #endif
 #define AF_MUTED      BOARD_AF_MUTED
 #define AF_OUT_MASK   0x0F00 // REG_AF bits 11:8: the audio out
+// The whole REG_AF word a board wants for the received audio, where AF_MUTED | AF_ENABLE | source does not describe it.
+// The DM-36 needs the FD6818's flat discriminator on the modem's AF input (0x6943, its digital receive value) and the
+// audio played from the modem's own DAC (AUDIO_CONTROL bit 6): its AF output pin carries no demodulated audio at all.
+#ifndef BOARD_AF_FM_WORD
+#define BOARD_AF_FM_WORD (AF_MUTED | 0x0002 | (BOARD_AF_FM << 8))
+#endif
 #define DMR_50_TX     0x3B18 // 0x50 while a DMR burst is sent (stock 0x2b5a8)
 
 typedef struct {

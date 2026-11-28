@@ -185,8 +185,12 @@ static void write_block(bool play)
     bool b = play && (beep_in != beep_out);
     const int16_t *bx = beep[beep_out % BEEP_BLOCKS];
     uint8_t block[MODEM_BEEP_BLOCK];
+    // The volume knob scales received speech only (M17 / NXDN / P25). Key beeps and prompts keep their own volume and
+    // must still be heard at level 0, so they are added after the scaling (2026-11-28)
+    uint8_t vol = modem_rx_volume();
+
     for (int i = 0; i < BLOCK; i++) {
-        int32_t v = (voice ? x[i] : 0) + (b ? bx[i] : 0);
+        int32_t v = (voice ? (x[i] * vol) / 15 : 0) + (b ? bx[i] : 0);
         int16_t s = (int16_t)((v > 32767) ? 32767 : (v < -32768) ? -32768 : v);
         block[2 * i] = (uint8_t)s; // low byte first
         block[2 * i + 1] = (uint8_t)((uint16_t)s >> 8);

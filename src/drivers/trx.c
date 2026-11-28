@@ -155,6 +155,15 @@ void trx_set_fm(uint8_t rx_volume)
     trx_set_demod(TRX_DEMOD_FM);
 }
 
+// The receive level (0x48), the analog modes: trx_set_fm() writes the factory one, the radio's volume proceeds from it
+void trx_set_volume(uint8_t rx_volume)
+{
+    if (!drv) {
+        return; // the knob's first reading can land before trx_init()
+    }
+    drv->set_volume(rx_volume);
+}
+
 void trx_set_demod(trx_demod_t new_demod)
 {
     demod = new_demod;

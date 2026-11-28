@@ -226,7 +226,14 @@ static const iconArt_t ICONS[ICONS_COUNT] FLASH_CONST = {
      {"              ", "              ", "              ", "          ##  ", "          ##  ", "          ##  ",
       "       ## ##  ", "============= ", "       ## ##  ", "    ## ## ##  ", "    ## ## ##  ", "    ## ## ##  ",
       " ## ## ## ##  ", " ## ## ## ##  ", " ## ## ## ##  ", "              ", "              ",
-      "              "}}};
+      "              "}},
+    {// ICONS_BLUETOOTH: the standard Bluetooth logo (bind rune), for the DM-36's LytLink menu
+     20,
+     {"                    ", "          #         ", "          ###        ", "          #  #       ",
+      "          #   ##    ", "    #     #     #    ", "     ##   #   ##     ", "       #  #  #       ",
+      "        #####        ", "          #         ", "         ####        ", "        # #  #       ",
+      "      ##  #   ##     ", "     #    #    ##    ", "    #     #  ##      ", "          ###        ",
+      "          #         ", "                    "}}};
 
 int32_t icons_draw(int32_t x, int32_t y, icons_id_t icon, theme_colour_t colour)
 {

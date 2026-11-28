@@ -186,6 +186,24 @@ static void set_bandwidth(bool wide)
 
 static bool fm_audio_before_beep = false; // modem_beep()
 
+// The volume knob's level: the actual gain is applied to the decoded PCM (dmr_sound.c / voice_play.c). Writing it
+// into the codec's hardware gain instead amplified the noise floor and clipped on this board (2026-11-28).
+#if BOARD_VOLUME_POT
+static uint8_t rx_volume_level = BOARD_ANALOG_RX_VOLUME;
+#else
+static uint8_t rx_volume_level;
+#endif
+
+uint8_t modem_rx_volume(void)
+{
+    return rx_volume_level;
+}
+
+void modem_set_rx_volume(uint8_t level)
+{
+    rx_volume_level = (uint8_t)(level > 15 ? 15 : level);
+}
+
 void modem_fm_receive(bool wide, uint8_t dac_gain)
 {
     set_bandwidth(wide);
@@ -198,7 +216,7 @@ void modem_fm_receive(bool wide, uint8_t dac_gain)
     } else {
         AUDIO_CONTROL = 0x40;
     }
-    GCR_DACL = dac_gain;
+    GCR_DACL = dac_gain; // the analog AF path needs the calibration value
     DAC_PD_CTRL |= BITSET(1);
     WORK_MODE = WORK_MODE_FM;
 }

@@ -44,6 +44,7 @@
 // the receive digital gain 9 and the mic step table 31/34/38/41/44 (RadioFoundry's set-up B, the DM-32's newer RF
 // section: docs/spec/hardware-dm32.md 8.10; their boards/dm32/radio_dm32.c writes 0xE92C on it).
 #define MIC_GAIN_BASE    0xE900 // the receive digital gain 9
+#define FM_MIC_GAIN_SWEEP 0 // the sweep (2026-11-28) found 0x1F (31) the FM microphone's level on this board
 #define MIC_GAIN_DEFAULT 0xE90D // the stock DM-36's table entry 2 (see set_mic_gain())
 
 // Power on: the DM-36 stock firmware's FD6818B init (0x0300ed96), value by value
@@ -66,15 +67,23 @@ static const fd68xx_setting_t init_settings[] = {
 
 // After the modem init: the FM setup of the stock firmware (0x37 = 0x9D1F, 0x48 = 0xB386)
 static const fd68xx_setting_t post_init_settings[] = {
-    {0x47, 0x0000}, {0x13, 0x03DF}, {0x47, AF_MUTED}, {0x7E, 0x302E}, {0x2B, 0xC000}, {0x43, 0x3028}, {0x78, 0x6968},
-    {0x30, 0x0000}, {0x38, 0xBA00}, {0x39, 0x00DB}, {0x32, 0x0244}, {0x07, 0x0470}, {0x07, 0x21CE}, {0x51, 0x0000},
+    {0x47, 0x0000}, {0x13, 0x03DF}, {0x47, AF_MUTED}, {0x7E, 0x302E}, {0x2B, 0x00C0}, {0x43, 0x3028}, {0x78, 0x6968},
+    {0x30, 0x0000}, {0x38, 0xBA00}, {0x39, 0x00DB}, {0x32, 0x0244}, {0x07, 0x0470}, {0x07, 0x21CE}, {0x51, 0x00A0},
     {0x3F, 0x0000}, {0x37, 0x9D1F}, {0x30, 0x0000}, {0x30, 0xBFF1}, {0x47, AF_MUTED}, {0x48, 0xB386},
 };
 
 // FM: the stock firmware's analog settings (0x0300e93a...)
 static const fd68xx_setting_t fm_settings[] = {
+    // The stock's first pass (0x0300E93A): the audio back to the raw path, the baseband off it
+    {0x47, 0x6943}, {0x7E, 0x3006},
     {0x31, 0x0000}, {0x42, 0x6F5A}, {0x2A, 0x6600}, {0x30, 0x0000}, {0x13, 0x03DF}, {0x47, AF_MUTED}, {0x7E, 0x302E},
-    {0x2B, 0xC000}, {0x43, 0x3028}, {0x07, 0x0470}, {0x07, 0x21CE}, {0x51, 0x0000}, {0x3F, 0x0000}, {0x37, 0x9D1F},
+    // 0x2B was 0xC000, the DM-32 / FD6818 FM value. The DM-36 stock firmware never writes 0xC000: its values are
+    // 0x00E0 (0x0300F2D4), 0x00C0 (0x0300F302) and 0x0005 (0x0306A154). 0xC000 is the audio path's setting on the
+    // other chip and left the AF pin with no demodulated audio (2026-11-28).
+    {0x2B, 0x00C0}, {0x43, 0x3028},
+    // 0x07 was 0x0470 then 0x21CE (DM-32 values). The DM-36 stock firmware writes 0x07 once, as 0x046F, in this FM
+    // set-up (0x0300E97C); the low bits are the audio path's, and 0x70 against 0x6F is seven bits, not a rounding.
+    {0x07, 0x046F}, {0x51, 0x00A0}, {0x3F, 0x0000}, {0x37, 0x9D1F},
     {0x50, 0x3B20}, {0x30, 0xBFF1}, {0x47, AF_MUTED}, {0x48, 0xB386},
 };
 
@@ -84,14 +93,13 @@ static const fd68xx_setting_t fm_settings[] = {
 // 0x50 is not written here (the stock's DMR table doesn't either): on the FD6818B its bit 15 is the analog
 // transmit (the stock writes 0xBB20 around the transmit and 0x3B20 elsewhere, as the FD6818B's tx_on() does),
 // not the FD6818's raw baseband. The raw audio of the digital modes comes with 0x47 = 0x6943.
-// 0x48 is the FD6818B's set-up B word (0xB2FD), not the stock's 0xB2F5: the difference is the DAC gain field
-// (5 against 13, about 2 dB a step). The digital modes are demodulated in software here (the discriminator from the
-// chip's audio output: dmr_soft.c, nxdn_radio.c, m17_radio.c, p25_phy.c), so the level into the baseband matters:
-// the DM-32's DMR word (0xBBBF) has the DAC gain 15, the stock's 5 is about 20 dB under it. The FD6818B's set-up
-// B was checked on radios both ways (RadioFoundry: 0x6943 / 0xB2FD).
+// 0x48 = 0xB2F5 as the stock DM-36 writes it (0x0300F2C0). It was the FD6818B's set-up B word 0xB2FD, whose DAC
+// gain field is some 16 dB higher: on the DM-36 the software demod (the discriminator from the chip's audio output)
+// then saw bursts without syncs - 751 bursts against 3 syncs in 17 s of a call, the audio only noise. The stock value
+// decodes.
 static const fd68xx_setting_t dmr_settings[] = {
     {0x31, 0x0000}, {0x42, 0x6F5A}, {0x2A, 0x6600}, {0x47, 0x0000}, {0x30, 0x0000}, {0x13, 0x03FF}, {0x47, 0x6740},
-    {0x48, 0xB2FD}, {0x7E, 0xB03F}, {0x2B, 0x00E0}, {0x43, 0x0048}, {0x78, 0x6968}, {0x30, 0x0000}, {0x37, 0x9D1F},
+    {0x48, 0xB2F5}, {0x7E, 0xB03F}, {0x2B, 0x00E0}, {0x43, 0x0048}, {0x78, 0x6968}, {0x30, 0x0000}, {0x37, 0x9D1F},
     {0x30, 0x0000}, {0x30, 0xBFF1}, {0x13, 0x03DF}, {0x4A, 0x5430}, {0x28, 0x0A40}, {0x47, 0x6943},
     {0x3F, 0x0000}, {0xC7, 0x6943}, {0x47, 0x6943},
 };
@@ -116,6 +124,7 @@ static void post_init(void)
     fd68xx_note_defaults();
 }
 
+// FM receive stays on CONTROL_RX (0xBFF1): the stock's 0xC3FA would key the transmitter.
 static void fm_settings_write(void)
 {
     FD68XX_WRITE_TABLE(fm_settings);
@@ -134,6 +143,10 @@ static void set_demod(trx_demod_t demod)
     bool am = (demod == TRX_DEMOD_AM);
 
     fd68xx_set_demod(demod);
+    // 0x2B, the filters / demodulator word: the shared fd68xx_set_demod() writes the FD6818's 0xC000 for FM (0x0600
+    // for AM) after the tables, so every FM set-up ended on the other chip's value whatever fm_settings had written.
+    // The DM-36 stock firmware never writes 0xC000: 0x00E0 (0x0300F2D4) and 0x00C0 (0x0300F302) are its words.
+    trx_spi_write(0x2B, 0x00C0);
     trx_spi_write(0x42, am ? 0x6F5C : 0x6F5A);
     trx_spi_write(0x2A, 0x6600);
     trx_spi_write(REG_AGC_TOP, 0x0210);
@@ -161,10 +174,35 @@ static void set_bandwidth(trx_bandwidth_t bandwidth)
 // why FM transmit came out far too loud. The setting (0..31) picks one of the five, as on the stock (26 -> the middle).
 static void set_mic_gain(uint8_t gain)
 {
-    static const uint16_t steps[] = {11, 12, 13, 15, 17};
+#if FM_MIC_GAIN_SWEEP
+    // Diagnostic: one step of 0x7D per transmission, so the microphone's level can be found without timing anything.
+    // The stock's own steps (11 - 17) carried the breath alone; these run up to the register's 6-bit maximum (63).
+    static const uint8_t sweep[] = {0x0B, 0x0F, 0x14, 0x1A, 0x1F, 0x28, 0x3F};
+    static uint8_t index;
+    uint8_t step = sweep[index];
+
+    index = (uint8_t)((index + 1) % (sizeof(sweep) / sizeof(sweep[0])));
+    (void)gain;
+    trx_spi_write(0x7D, (uint16_t)(MIC_GAIN_BASE | step));
+#else
+    // The stock DM-36 firmware's table, 11 - 17, was 18 dB under what this board's microphone needs: the peer heard the
+    // breath alone. Measured one step per transmission (2026-11-28): 31 the FM microphone's level, so the default
+    // (26, the stock's middle) sits on it, with the steps either side of it for the menu.
+    static const uint16_t steps[] = {26, 31, 36, 41, 48};
     uint8_t index = (gain >= 30) ? 4 : (gain >= 28) ? 3 : (gain >= 26) ? 2 : (gain >= 24) ? 1 : 0;
 
     trx_spi_write(0x7D, (uint16_t)(MIC_GAIN_BASE | steps[index]));
+#endif
+}
+
+// The knob's 0 - 15 level on the DM-36: the generic fd68xx_set_volume() held Gain2 at 30 and moved only the low
+// nibble, so level 1 was already loud and the steps were not evenly spread (2026-11-28). Map the level through both
+// fields instead: Gain2 (bits 7:4) and the DAC nibble (bits 3:0) rise together, level 0 silent, level 15 full.
+static void set_volume(uint8_t level)
+{
+    uint8_t v = (uint8_t)(level > 15 ? 15 : level);
+
+    trx_spi_write(0x48, (uint16_t)(0x3000u | ((uint16_t)v << 4) | v));
 }
 
 // The chip picks its band itself (as the FD6818B): the calibration byte in 0x40, no 0x1A
@@ -190,8 +228,33 @@ static void rx_on(void)
     control_on(CONTROL_RX);
 }
 
+// Neither receive nor transmit (the audio muted): after a transmission, the stock firmware's end of the FM transmit
+// set-up (0x0306A240 / 0x0306A248)
+static void idle(void)
+{
+    trx_spi_write(0x70, 0x0000);
+    trx_spi_write(0x58, 0x0000);
+    fd68xx_idle();
+}
+
 static void transmit_prepare(void)
 {
+    // The stock firmware's FM transmit set-up (0x0306A0C6 ... 0x0306A1DA): the microphone's way into the modulator.
+    // 0x58 / 0x59 / 0x5A / 0x5B / 0x5C and 0x51 = 0x0000 were never written here, and the modulator therefore took
+    // almost nothing from the microphone: the peer heard the breath blown into it and hardly a voice (2026-11-28).
+    trx_spi_write(0x51, 0x0000);
+    trx_spi_write(0x2B, 0x0005);
+    trx_spi_write(0x58, 0x3C03);
+    trx_spi_write(0x72, 0x3065);
+    trx_spi_write(0x70, 0x00E0);
+    trx_spi_write(0x5A, 0x0000);
+    trx_spi_write(0x5B, 0x0000);
+    trx_spi_write(0x5C, 0x5625);
+    trx_spi_write(0x59, 0xC0F8);
+    trx_spi_write(0x59, 0x00F8);
+    trx_spi_write(0x3F, 0x0080);
+    trx_spi_write(0x59, 0x08F8);
+    trx_spi_write(0x59, 0x00F8);
     trx_spi_write(0x3F, 0x0000);
     trx_spi_write(0x40, 0x34EA);
     trx_spi_write(0x37, REG_37);
@@ -262,11 +325,11 @@ trx_driver_t trx_dm36 = {
 
     .fm_settings = fm_settings_write,
     .dmr_settings = dmr_settings_write,
-    .set_volume = fd68xx_set_volume,
+    .set_volume = set_volume,
     .set_demod = set_demod,
     .set_bandwidth = set_bandwidth,
 
-    .idle = fd68xx_idle,
+    .idle = idle,
     .set_band = set_band,
     .set_frequency = fd68xx_set_frequency,
     .rx_on = rx_on,

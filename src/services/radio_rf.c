@@ -285,6 +285,10 @@ static void rf_task_main(void *arg)
             modem_set_frequency_calibration(cal->valid, cal->osc_tune, cal->rx_adjust, factory_cal_mod_bias(rs.channel.tx_freq));
         }
         if (asked & RF_SETUP) {
+            // The speaker off before anything else: an engine-started transmission never went through
+            // squelch_close(), so the amplifier and the FM audio path stayed as the call before left them and every
+            // switch below (the band, the modem's calibration, the mic selector) came out of the speaker as a burst
+            radio_tx_audio_off();
             // radioSetTx(): the band of the Tx frequency, the modem's DMR calibration, the mic to the modem (vocoder)
             trx_set_frequency(rs.channel.tx_freq, false);
             trx_transmit_prepare();

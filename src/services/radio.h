@@ -124,6 +124,13 @@ uint8_t radio_noise(void);      // the last noise reading (the RSSI screen)
 /* Scanning (scan.c, the dual watch) */
 
 void radio_set_scanning(bool on); // scanning: no receive beeps, no beacons or bursts, fast readings on DMR
+// A radio whose knob is the volume (BOARD_KNOB_VOLUME): the analog receive level, 0 - 15, by that many steps, applied
+// at once while receiving
+void radio_analog_volume_step(int steps);
+// A board with a volume potentiometer (BOARD_VOLUME_POT): a new 0 - 15 level from it, true when it changed. The first
+// call only records the knob's position, so the radio boots on the board's default (6) until the knob is turned.
+bool radio_volume_from_pot(uint8_t level);
+uint8_t radio_analog_volume(void);               // the level actually in use (show it, not the pot's raw reading)
 bool radio_is_scanning(void);
 // Scanning a digital channel: the strongest reading since the last retune settled, and how many (0: none yet)
 uint8_t radio_scan_peak(uint16_t *samples);

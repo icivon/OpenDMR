@@ -52,12 +52,34 @@
  * mute, never muted (the standby noise, the burst on a channel change). */
 #define BOARD_AF_MUTED 0x6040
 #define BOARD_AF_FM    0x0
+/* The received audio on this board: the FM source 0 value the stock firmware writes (0x6042) left the speaker with
+ * noise only, a strong signal and the squelch open. The one word measured to put audio on that pin is the discriminator
+ * (0x6943): it is what the digital modes receive, and with the audio switch low it came out of the speaker as the
+ * undecoded bursts (the "machine gun" at the top). So the analog modes take it too, and the modem's own FM audio out
+ * stays unused. The sound is a flat discriminator (no de-emphasis): it is the link being proved, not the final tone. */
+#define BOARD_AF_FM_WORD 0x6943
 
-/* The audio switch (0x2F, GPIOB bit 15): the DM-32 drives it high in FM (the speaker straight from the FD6818). The
- * DM-36 stock firmware keeps it low in every mode (its GPIO init writes pin 47 = 0) and picks the audio source with
- * the FD6818's own registers (0x2E/0x2F/0x51), so on this board the pad stays low: driven high the speaker sat on an
- * input nothing drove - the loud noise in standby that no AF mute stopped, and none of the demodulated audio. */
-#define BOARD_AUDIO_SW_FM_HIGH 0
+/* The microphone selector, level by level. With BOARD_MIC_MUT_INVERTED the analog modes drive 0 and the digital 1;
+ * the digital modes' transmissions carry voice (proved with DMR), the FM one carries the breath alone. So the level
+ * the digital modes use is the one that reaches a working microphone, and the analog modes take it too: the selector
+ * does not separate the two on this board, whatever its DM-32 description says. */
+#define BOARD_MIC_SAME_LEVEL_FOR_ANALOG 0
+
+/* The analog receive's starting level (0x48), 0 - 15: the pot sets the real level on the first reading. */
+#define BOARD_ANALOG_RX_VOLUME 0
+
+/* The channel knob changes channels; the separate power/volume pot (ADC channel 0) controls the level. */
+#define BOARD_KNOB_VOLUME 0
+
+/* The power / volume pot is on ADC channel 0; its full travel measured 0 - 690. */
+#define BOARD_VOLUME_POT 1
+
+/* The audio switch (0x2F, GPIOB bit 15) is inverted on this board against the DM-32: low is the FD6818's AF output
+ * (analog FM, the broadcast receiver's external audio node), high is the baseband (the digital modes' PCM and the
+ * beeps). Measured 2026-11-28: held low in every mode (the DM-32 value) the boot melody and every key beep went to the
+ * baseband's DAC while the speaker still sat on the FD6818 - a hiss instead of the tone, a burst on every channel
+ * change, and the raw discriminator of every digital call on the speaker. */
+#define BOARD_AUDIO_SW_INVERTED 1
 
 /* ---------------- keypad wiring (measured on real hardware, 2026-11-25) ----------------
  * The DM-36 matrix is wired differently: the physical keys sit at other row/column

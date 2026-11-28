@@ -58,6 +58,7 @@
 #include "vfo_screen.h"
 #include "lock_screen.h"
 #include "radio.h"
+#include "hw.h" // BOARD_KNOB_VOLUME
 #include "tx_screen.h"
 #include "sound.h"
 #include "dmr.h"
@@ -875,9 +876,15 @@ static bool handle(const ui_event_t *ev)
     switch (ev->type) {
         case UI_EVENT_ROTARY:
             scan_stop(&scan);
+#if BOARD_KNOB_VOLUME
+            // This radio's knob is the volume (its stock firmware; no potentiometer): the analog receive level. The
+            // channels are taken with UP / DOWN or the keypad, as on the stock (2026-11-28)
+            radio_analog_volume_step(ev->steps);
+#else
             if (zone_size() > 0) {
                 channel_changed((((position + ev->steps) % zone_size()) + zone_size()) % zone_size());
             }
+#endif
             return true;
         case UI_EVENT_KEY_PRESS:
         case UI_EVENT_KEY_REPEAT:
